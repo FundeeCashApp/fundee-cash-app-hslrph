@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Draw, Winner, Ticket, AdWatch } from '@/types';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -32,13 +32,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [adCooldownTime, setAdCooldownTime] = useState<number>(0);
   const [isAdButtonActive, setIsAdButtonActive] = useState<boolean>(true);
 
+  const initializeData = useCallback(async () => {
+    try {
+      console.log('Initializing app data...');
+      await Promise.all([
+        loadCurrentDraw(),
+        loadRecentWinners(),
+        loadAdWatchData(),
+      ]);
+      // Load user tickets after current draw is loaded
+      setTimeout(() => loadUserTickets(), 500);
+    } catch (error) {
+      console.error('Error initializing app data:', error);
+    }
+  }, []);
+
+  const updateCountdown = useCallback(() => {
+    if (!currentDraw) return;
+    
+    const now = new Date();
+    const drawTime = new Date(currentDraw.drawTime);
+    const timeDiff = drawTime.getTime() - now.getTime();
+    
+    if (timeDiff <= 0) {
+      // Time for draw!
+      performDraw();
+      setTimeUntilDraw(0);
+    } else {
+      setTimeUntilDraw(Math.floor(timeDiff / 1000));
+    }
+  }, [currentDraw]);
+
   useEffect(() => {
     if (user) {
       initializeData();
       const interval = setInterval(updateCountdown, 1000);
       return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user, initializeData, updateCountdown]);
 
   useEffect(() => {
     if (adCooldownTime > 0) {
@@ -55,21 +86,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return () => clearInterval(interval);
     }
   }, [adCooldownTime]);
-
-  const initializeData = async () => {
-    try {
-      console.log('Initializing app data...');
-      await Promise.all([
-        loadCurrentDraw(),
-        loadRecentWinners(),
-        loadAdWatchData(),
-      ]);
-      // Load user tickets after current draw is loaded
-      setTimeout(() => loadUserTickets(), 500);
-    } catch (error) {
-      console.error('Error initializing app data:', error);
-    }
-  };
 
   const loadCurrentDraw = async () => {
     try {
@@ -323,22 +339,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (error instanceof Error && error.message === 'Ad data load timeout') {
         console.warn('Ad data load timed out, continuing with defaults');
       }
-    }
-  };
-
-  const updateCountdown = () => {
-    if (!currentDraw) return;
-    
-    const now = new Date();
-    const drawTime = new Date(currentDraw.drawTime);
-    const timeDiff = drawTime.getTime() - now.getTime();
-    
-    if (timeDiff <= 0) {
-      // Time for draw!
-      performDraw();
-      setTimeUntilDraw(0);
-    } else {
-      setTimeUntilDraw(Math.floor(timeDiff / 1000));
     }
   };
 

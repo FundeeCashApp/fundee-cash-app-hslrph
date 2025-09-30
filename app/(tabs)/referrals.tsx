@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,7 @@ export default function ReferralsScreen() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [totalEarned, setTotalEarned] = useState(0);
 
-  useEffect(() => {
-    if (user) {
-      loadReferrals();
-    }
-  }, [user]);
-
-  const loadReferrals = async () => {
+  const loadReferrals = useCallback(async () => {
     try {
       if (!user) return;
       
@@ -67,7 +61,13 @@ export default function ReferralsScreen() {
     } catch (error) {
       console.error('Error loading referrals:', error);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadReferrals();
+    }
+  }, [user, loadReferrals]);
 
   const copyReferralCode = async () => {
     if (!user?.referralCode) return;

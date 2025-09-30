@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,8 @@ export default function HomeScreen() {
   } = useApp();
   const [refreshing, setRefreshing] = useState(false);
 
+  const checkDrawResultsCallback = useCallback(checkDrawResults, [checkDrawResults]);
+
   useEffect(() => {
     if (!user) {
       router.replace('/auth/login');
@@ -36,8 +38,8 @@ export default function HomeScreen() {
   }, [user]);
 
   useEffect(() => {
-    checkDrawResults();
-  }, [currentDraw]);
+    checkDrawResultsCallback();
+  }, [currentDraw, checkDrawResultsCallback]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);

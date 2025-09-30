@@ -26,21 +26,21 @@ export const verifyFonts = async (): Promise<FontStatus[]> => {
     try {
       // On web, we can check if the font is loaded
       if (Platform.OS === 'web') {
-        // @ts-ignore - document is available on web
+        // @ts-expect-error - document is available on web
         const testElement = document.createElement('div');
         testElement.style.fontFamily = fontName;
         testElement.style.position = 'absolute';
         testElement.style.visibility = 'hidden';
         testElement.textContent = 'Test';
         
-        // @ts-ignore - document is available on web
+        // @ts-expect-error - document is available on web
         document.body.appendChild(testElement);
         
         // Check if the font was applied
         const computedStyle = window.getComputedStyle(testElement);
         const actualFont = computedStyle.fontFamily;
         
-        // @ts-ignore - document is available on web
+        // @ts-expect-error - document is available on web
         document.body.removeChild(testElement);
         
         const loaded = actualFont.includes(fontName) || actualFont !== 'serif';
