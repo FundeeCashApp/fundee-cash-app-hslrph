@@ -1,63 +1,116 @@
 
 export interface User {
   id: string;
+  authUserId: string;
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber: string;
   country: string;
-  profilePhoto?: string;
   referralCode: string;
+  referredBy?: string;
+  profilePhoto?: string;
   walletBalance: number;
-  ticketCount: number;
   createdAt: string;
-}
-
-export interface Ticket {
-  id: string;
-  number: string; // 9-digit unique number
-  userId: string;
-  drawDate: string;
-  isWinner: boolean;
-  winAmount?: number;
-  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Draw {
   id: string;
-  date: string;
-  totalTickets: number;
-  winners: Winner[];
+  drawDate: string;
+  drawTime: string;
   status: 'pending' | 'completed' | 'refunded';
-  drawTime: string; // 10:00 PM ET
+  totalTickets: number;
+  minimumTickets: number;
+  prizePool: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Ticket {
+  id: string;
+  userId: string;
+  drawId: string;
+  ticketNumber: string;
+  source: 'purchase' | 'ad_watch' | 'referral';
+  createdAt: string;
 }
 
 export interface Winner {
   id: string;
+  drawId: string;
   userId: string;
-  userName: string;
-  ticketNumber: string;
-  amount: number;
-  drawDate: string;
+  ticketId: string;
+  prizeAmount: number;
+  prizeTier: 'tier1' | 'tier2' | 'tier3';
+  createdAt: string;
+  user?: {
+    firstName: string;
+    lastName: string;
+  };
+}
+
+export interface AdWatch {
+  id: string;
+  userId: string;
+  watchedAt: string;
+  ticketEarned: boolean;
+  sessionCount: number;
 }
 
 export interface Referral {
   id: string;
   referrerId: string;
   referredUserId: string;
-  referredUserName: string;
+  ticketEarned: boolean;
   createdAt: string;
-  ticketAwarded: boolean;
+  referredUser?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
 }
 
-export interface WithdrawalRequest {
+export interface Withdrawal {
   id: string;
   userId: string;
   amount: number;
-  method: 'bank' | 'crypto' | 'paypal';
-  details: BankDetails | CryptoDetails | PaypalDetails;
-  status: 'pending' | 'processing' | 'completed' | 'rejected';
+  method: 'bank_transfer' | 'crypto_usdt' | 'crypto_btc' | 'crypto_eth' | 'paypal';
+  details: any;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: string;
+  processedAt?: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  userId: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'open' | 'in_progress' | 'closed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FAQItem {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface Country {
+  name: string;
+  code: string;
+  flag: string;
+  dial_code: string;
+}
+
+export interface CountryOption {
+  name: string;
+  code: string;
+  flag: string;
+  dial_code: string;
 }
 
 export interface BankDetails {
@@ -75,36 +128,4 @@ export interface CryptoDetails {
 
 export interface PaypalDetails {
   email: string;
-}
-
-export interface AdWatch {
-  id: string;
-  userId: string;
-  adId: string;
-  watchedAt: string;
-  completed: boolean;
-  ticketAwarded: boolean;
-}
-
-export interface FAQ {
-  id: string;
-  question: string;
-  answer: string;
-  category: string;
-}
-
-export interface SupportTicket {
-  id: string;
-  userId: string;
-  email: string;
-  subject: string;
-  message: string;
-  status: 'open' | 'closed';
-  createdAt: string;
-}
-
-export interface CountryOption {
-  code: string;
-  name: string;
-  flag: string;
 }

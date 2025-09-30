@@ -15,6 +15,7 @@ import { Button } from '@/components/button';
 import { IconSymbol } from '@/components/IconSymbol';
 import { faqs } from '@/data/faqs';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function HelpScreen() {
   const { user } = useAuth();
@@ -36,15 +37,34 @@ export default function HelpScreen() {
       return;
     }
 
-    // Simulate sending support request
-    Alert.alert(
-      'Support Request Sent',
-      'Thank you for contacting us. We will get back to you within 24 hours.',
-      [{ text: 'OK', onPress: () => {
-        setSupportForm({ email: user?.email || '', subject: '', message: '' });
-        setShowSupportForm(false);
-      }}]
-    );
+    try {
+      const { error } = await supabase
+        .from('support_tickets')
+        .insert({
+          user_id: user?.id || null,
+          email: supportForm.email,
+          subject: supportForm.subject,
+          message: supportForm.message,
+        });
+
+      if (error) {
+        console.error('Error submitting support ticket:', error);
+        Alert.alert('Error', 'Failed to submit support request');
+        return;
+      }
+
+      Alert.alert(
+        'Support Request Sent',
+        'Thank you for contacting us. We will get back to you within 24 hours.',
+        [{ text: 'OK', onPress: () => {
+          setSupportForm({ email: user?.email || '', subject: '', message: '' });
+          setShowSupportForm(false);
+        }}]
+      );
+    } catch (error) {
+      console.error('Error submitting support ticket:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   const openTermsAndConditions = () => {

@@ -1,8 +1,10 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Draw, Winner, Ticket, AdWatch } from '@/types';
 import { useAuth } from './AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
+import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface AppContextType {
   currentDraw: Draw | null;
@@ -63,62 +65,145 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadCurrentDraw = async () => {
     try {
-      const storedDraw = await AsyncStorage.getItem('currentDraw');
-      if (storedDraw) {
-        setCurrentDraw(JSON.parse(storedDraw));
+      // Get today's draw
+      const today = new Date();
+      const drawDate = today.toISOString().split('T')[0];
+      
+      // Set draw time to 10 PM ET (22:00)
+      const drawTime = new Date(today);
+      drawTime.setHours(22, 0, 0, 0);
+      
+      // If it's past 10 PM, get tomorrow's draw
+      if (today.getHours() >= 22) {
+        drawTime.setDate(drawTime.getDate() + 1);
+      }
+
+      const { data: existingDraw, error } = await supabase
+        .from('draws')
+        .select('*')
+        .eq('draw_date', drawTime.toISOString().split('T')[0])
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading draw:', error);
+        return;
+      }
+
+      if (existingDraw) {
+        const draw: Draw = {
+          id: existingDraw.id,
+          drawDate: existingDraw.draw_date,
+          drawTime: existingDraw.draw_time,
+          status: existingDraw.status,
+          totalTickets: existingDraw.total_tickets,
+          minimumTickets: existingDraw.minimum_tickets,
+          prizePool: existingDraw.prize_pool,
+          createdAt: existingDraw.created_at,
+          updatedAt: existingDraw.updated_at,
+        };
+        setCurrentDraw(draw);
       } else {
-        // Create today's draw
-        const today = new Date();
-        const drawTime = new Date(today);
-        drawTime.setHours(22, 0, 0, 0); // 10 PM
-        
-        if (today > drawTime) {
-          // If it's past 10 PM, create tomorrow's draw
-          drawTime.setDate(drawTime.getDate() + 1);
+        // Create new draw
+        const { data: newDraw, error: createError } = await supabase
+          .from('draws')
+          .insert({
+            draw_date: drawTime.toISOString().split('T')[0],
+            draw_time: drawTime.toISOString(),
+            minimum_tickets: 300000,
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating draw:', createError);
+          return;
         }
 
-        const newDraw: Draw = {
-          id: drawTime.toISOString().split('T')[0],
-          date: drawTime.toISOString().split('T')[0],
-          totalTickets: 0,
-          winners: [],
-          status: 'pending',
-          drawTime: drawTime.toISOString(),
-        };
-
-        setCurrentDraw(newDraw);
-        await AsyncStorage.setItem('currentDraw', JSON.stringify(newDraw));
+        if (newDraw) {
+          const draw: Draw = {
+            id: newDraw.id,
+            drawDate: newDraw.draw_date,
+            drawTime: newDraw.draw_time,
+            status: newDraw.status,
+            totalTickets: newDraw.total_tickets,
+            minimumTickets: newDraw.minimum_tickets,
+            prizePool: newDraw.prize_pool,
+            createdAt: newDraw.created_at,
+            updatedAt: newDraw.updated_at,
+          };
+          setCurrentDraw(draw);
+        }
       }
     } catch (error) {
-      console.log('Error loading current draw:', error);
+      console.error('Error loading current draw:', error);
     }
   };
 
   const loadUserTickets = async () => {
     try {
-      if (!user) return;
+      if (!user || !currentDraw) return;
       
-      const storedTickets = await AsyncStorage.getItem(`userTickets_${user.id}`);
-      if (storedTickets) {
-        const tickets = JSON.parse(storedTickets);
-        const todayTickets = tickets.filter((ticket: Ticket) => 
-          ticket.drawDate === new Date().toISOString().split('T')[0]
-        );
-        setUserTickets(todayTickets);
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('draw_id', currentDraw.id);
+
+      if (error) {
+        console.error('Error loading user tickets:', error);
+        return;
+      }
+
+      if (data) {
+        const tickets: Ticket[] = data.map(ticket => ({
+          id: ticket.id,
+          userId: ticket.user_id,
+          drawId: ticket.draw_id,
+          ticketNumber: ticket.ticket_number,
+          source: ticket.source,
+          createdAt: ticket.created_at,
+        }));
+        setUserTickets(tickets);
       }
     } catch (error) {
-      console.log('Error loading user tickets:', error);
+      console.error('Error loading user tickets:', error);
     }
   };
 
   const loadRecentWinners = async () => {
     try {
-      const storedWinners = await AsyncStorage.getItem('recentWinners');
-      if (storedWinners) {
-        setRecentWinners(JSON.parse(storedWinners));
+      const { data, error } = await supabase
+        .from('winners')
+        .select(`
+          *,
+          users!inner(first_name, last_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error loading recent winners:', error);
+        return;
+      }
+
+      if (data) {
+        const winners: Winner[] = data.map(winner => ({
+          id: winner.id,
+          drawId: winner.draw_id,
+          userId: winner.user_id,
+          ticketId: winner.ticket_id,
+          prizeAmount: winner.prize_amount,
+          prizeTier: winner.prize_tier,
+          createdAt: winner.created_at,
+          user: {
+            firstName: winner.users.first_name,
+            lastName: winner.users.last_name,
+          },
+        }));
+        setRecentWinners(winners);
       }
     } catch (error) {
-      console.log('Error loading recent winners:', error);
+      console.error('Error loading recent winners:', error);
     }
   };
 
@@ -126,21 +211,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user) return;
       
+      // Get today's ad watches
       const today = new Date().toISOString().split('T')[0];
-      const storedAdData = await AsyncStorage.getItem(`adWatch_${user.id}_${today}`);
-      
-      if (storedAdData) {
-        const adData = JSON.parse(storedAdData);
-        setAdWatchCount(adData.count || 0);
+      const { data, error } = await supabase
+        .from('ad_watches')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('watched_at', `${today}T00:00:00`)
+        .lt('watched_at', `${today}T23:59:59`)
+        .order('watched_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading ad watch data:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        // Count consecutive ad watches
+        let consecutiveCount = 0;
+        const lastAdWatch = data[0];
+        const lastWatchTime = new Date(lastAdWatch.watched_at);
+        const now = new Date();
         
-        if (adData.cooldownEnd && new Date() < new Date(adData.cooldownEnd)) {
-          const remainingTime = Math.ceil((new Date(adData.cooldownEnd).getTime() - new Date().getTime()) / 1000);
-          setAdCooldownTime(remainingTime);
-          setIsAdButtonActive(false);
+        // Check if last ad watch was within the last session
+        for (const adWatch of data) {
+          if (adWatch.session_count === lastAdWatch.session_count) {
+            consecutiveCount++;
+          } else {
+            break;
+          }
+        }
+
+        setAdWatchCount(consecutiveCount);
+
+        // Check if in cooldown period (10 minutes after 5th ad)
+        if (consecutiveCount >= 5) {
+          const cooldownEnd = new Date(lastWatchTime);
+          cooldownEnd.setMinutes(cooldownEnd.getMinutes() + 10);
+          
+          if (now < cooldownEnd) {
+            const remainingTime = Math.ceil((cooldownEnd.getTime() - now.getTime()) / 1000);
+            setAdCooldownTime(remainingTime);
+            setIsAdButtonActive(false);
+          }
         }
       }
     } catch (error) {
-      console.log('Error loading ad watch data:', error);
+      console.error('Error loading ad watch data:', error);
     }
   };
 
@@ -160,176 +277,297 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const generateTicketNumber = (): string => {
-    return Math.floor(100000000 + Math.random() * 900000000).toString();
+  const generateTicketNumber = async (): Promise<string> => {
+    try {
+      const { data, error } = await supabase.rpc('generate_ticket_number');
+      if (error) {
+        console.error('Error generating ticket number:', error);
+        // Fallback to client-side generation
+        return Math.floor(100000000 + Math.random() * 900000000).toString();
+      }
+      return data;
+    } catch (error) {
+      console.error('Error generating ticket number:', error);
+      // Fallback to client-side generation
+      return Math.floor(100000000 + Math.random() * 900000000).toString();
+    }
   };
 
   const buyTicket = async (): Promise<string | null> => {
     try {
       if (!user || !currentDraw) return null;
       
-      const ticketNumber = generateTicketNumber();
-      const newTicket: Ticket = {
-        id: Date.now().toString(),
-        number: ticketNumber,
-        userId: user.id,
-        drawDate: currentDraw.date,
-        isWinner: false,
-        createdAt: new Date().toISOString(),
-      };
+      const ticketNumber = await generateTicketNumber();
+      
+      // Insert ticket into database
+      const { data, error } = await supabase
+        .from('tickets')
+        .insert({
+          user_id: user.id,
+          draw_id: currentDraw.id,
+          ticket_number: ticketNumber,
+          source: 'purchase',
+        })
+        .select()
+        .single();
 
-      // Save ticket
-      const existingTickets = await AsyncStorage.getItem(`userTickets_${user.id}`) || '[]';
-      const tickets = JSON.parse(existingTickets);
-      tickets.push(newTicket);
-      await AsyncStorage.setItem(`userTickets_${user.id}`, JSON.stringify(tickets));
+      if (error) {
+        console.error('Error buying ticket:', error);
+        Alert.alert('Error', 'Failed to purchase ticket');
+        return null;
+      }
 
-      // Update current draw total
-      const updatedDraw = { ...currentDraw, totalTickets: currentDraw.totalTickets + 1 };
-      setCurrentDraw(updatedDraw);
-      await AsyncStorage.setItem('currentDraw', JSON.stringify(updatedDraw));
+      if (data) {
+        // Update local state
+        const newTicket: Ticket = {
+          id: data.id,
+          userId: data.user_id,
+          drawId: data.draw_id,
+          ticketNumber: data.ticket_number,
+          source: data.source,
+          createdAt: data.created_at,
+        };
+        setUserTickets(prev => [...prev, newTicket]);
 
-      // Update user tickets
-      setUserTickets(prev => [...prev, newTicket]);
+        // Update draw total tickets
+        const { error: updateError } = await supabase
+          .from('draws')
+          .update({ total_tickets: currentDraw.totalTickets + 1 })
+          .eq('id', currentDraw.id);
 
-      return ticketNumber;
+        if (!updateError) {
+          setCurrentDraw(prev => prev ? { ...prev, totalTickets: prev.totalTickets + 1 } : null);
+        }
+
+        return ticketNumber;
+      }
+
+      return null;
     } catch (error) {
-      console.log('Error buying ticket:', error);
+      console.error('Error buying ticket:', error);
       return null;
     }
   };
 
   const watchAd = async (): Promise<boolean> => {
     try {
-      if (!user || !isAdButtonActive) return false;
+      if (!user || !isAdButtonActive || !currentDraw) return false;
       
       const newCount = adWatchCount + 1;
-      setAdWatchCount(newCount);
       
+      // Record ad watch
+      const { error: adError } = await supabase
+        .from('ad_watches')
+        .insert({
+          user_id: user.id,
+          session_count: newCount,
+          ticket_earned: true,
+        });
+
+      if (adError) {
+        console.error('Error recording ad watch:', error);
+        return false;
+      }
+
       // Award ticket
-      await updateUser({ ticketCount: user.ticketCount + 1 });
+      const ticketNumber = await generateTicketNumber();
+      const { data, error: ticketError } = await supabase
+        .from('tickets')
+        .insert({
+          user_id: user.id,
+          draw_id: currentDraw.id,
+          ticket_number: ticketNumber,
+          source: 'ad_watch',
+        })
+        .select()
+        .single();
+
+      if (ticketError) {
+        console.error('Error awarding ticket:', ticketError);
+        return false;
+      }
+
+      if (data) {
+        const newTicket: Ticket = {
+          id: data.id,
+          userId: data.user_id,
+          drawId: data.draw_id,
+          ticketNumber: data.ticket_number,
+          source: data.source,
+          createdAt: data.created_at,
+        };
+        setUserTickets(prev => [...prev, newTicket]);
+      }
+
+      setAdWatchCount(newCount);
       
       // Check if need cooldown
       if (newCount >= 5) {
-        const cooldownEnd = new Date();
-        cooldownEnd.setMinutes(cooldownEnd.getMinutes() + 10);
-        
         setAdCooldownTime(600); // 10 minutes
         setIsAdButtonActive(false);
-        
-        // Save ad watch data
-        const today = new Date().toISOString().split('T')[0];
-        const adData = {
-          count: newCount,
-          cooldownEnd: cooldownEnd.toISOString(),
-        };
-        await AsyncStorage.setItem(`adWatch_${user.id}_${today}`, JSON.stringify(adData));
       }
       
       return true;
     } catch (error) {
-      console.log('Error watching ad:', error);
+      console.error('Error watching ad:', error);
       return false;
     }
   };
 
   const performDraw = async () => {
     try {
-      if (!currentDraw) return;
+      if (!currentDraw || currentDraw.status !== 'pending') return;
       
       // Check if minimum tickets reached
-      if (currentDraw.totalTickets < 300000) {
+      if (currentDraw.totalTickets < currentDraw.minimumTickets) {
         // Refund everyone
-        const updatedDraw = { ...currentDraw, status: 'refunded' as const };
-        setCurrentDraw(updatedDraw);
-        await AsyncStorage.setItem('currentDraw', JSON.stringify(updatedDraw));
+        const { error } = await supabase
+          .from('draws')
+          .update({ status: 'refunded' })
+          .eq('id', currentDraw.id);
+
+        if (!error) {
+          setCurrentDraw(prev => prev ? { ...prev, status: 'refunded' } : null);
+          Alert.alert(
+            'Draw Cancelled',
+            'The minimum number of tickets was not reached. All participants will be refunded.',
+            [{ text: 'OK' }]
+          );
+        }
         return;
       }
 
-      // Perform draw - simulate winners
-      const winners: Winner[] = [];
-      
-      // 10 winners of $100
-      for (let i = 0; i < 10; i++) {
-        winners.push({
-          id: `winner_${Date.now()}_${i}`,
-          userId: `user_${Math.floor(Math.random() * 1000)}`,
-          userName: `Winner ${i + 1}`,
-          ticketNumber: generateTicketNumber(),
-          amount: 100,
-          drawDate: currentDraw.date,
-        });
+      // Get all tickets for this draw
+      const { data: allTickets, error: ticketsError } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('draw_id', currentDraw.id);
+
+      if (ticketsError || !allTickets || allTickets.length === 0) {
+        console.error('Error getting tickets for draw:', ticketsError);
+        return;
       }
-      
-      // 6 winners of $50
-      for (let i = 0; i < 6; i++) {
+
+      // Randomly select winners
+      const shuffledTickets = [...allTickets].sort(() => Math.random() - 0.5);
+      const winners = [];
+
+      // 10 winners of $100 (tier1)
+      for (let i = 0; i < Math.min(10, shuffledTickets.length); i++) {
+        const ticket = shuffledTickets[i];
         winners.push({
-          id: `winner_${Date.now()}_${i + 10}`,
-          userId: `user_${Math.floor(Math.random() * 1000)}`,
-          userName: `Winner ${i + 11}`,
-          ticketNumber: generateTicketNumber(),
-          amount: 50,
-          drawDate: currentDraw.date,
-        });
-      }
-      
-      // 20 winners of $10
-      for (let i = 0; i < 20; i++) {
-        winners.push({
-          id: `winner_${Date.now()}_${i + 16}`,
-          userId: `user_${Math.floor(Math.random() * 1000)}`,
-          userName: `Winner ${i + 17}`,
-          ticketNumber: generateTicketNumber(),
-          amount: 10,
-          drawDate: currentDraw.date,
+          draw_id: currentDraw.id,
+          user_id: ticket.user_id,
+          ticket_id: ticket.id,
+          prize_amount: 100,
+          prize_tier: 'tier1',
         });
       }
 
-      const updatedDraw = { ...currentDraw, winners, status: 'completed' as const };
-      setCurrentDraw(updatedDraw);
-      setRecentWinners(winners);
-      
-      await AsyncStorage.setItem('currentDraw', JSON.stringify(updatedDraw));
-      await AsyncStorage.setItem('recentWinners', JSON.stringify(winners));
-      
-      // Create tomorrow's draw
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(22, 0, 0, 0);
-      
-      const newDraw: Draw = {
-        id: tomorrow.toISOString().split('T')[0],
-        date: tomorrow.toISOString().split('T')[0],
-        totalTickets: 0,
-        winners: [],
-        status: 'pending',
-        drawTime: tomorrow.toISOString(),
-      };
-      
-      setCurrentDraw(newDraw);
-      await AsyncStorage.setItem('currentDraw', JSON.stringify(newDraw));
-      
+      // 6 winners of $50 (tier2)
+      for (let i = 10; i < Math.min(16, shuffledTickets.length); i++) {
+        const ticket = shuffledTickets[i];
+        winners.push({
+          draw_id: currentDraw.id,
+          user_id: ticket.user_id,
+          ticket_id: ticket.id,
+          prize_amount: 50,
+          prize_tier: 'tier2',
+        });
+      }
+
+      // 20 winners of $10 (tier3)
+      for (let i = 16; i < Math.min(36, shuffledTickets.length); i++) {
+        const ticket = shuffledTickets[i];
+        winners.push({
+          draw_id: currentDraw.id,
+          user_id: ticket.user_id,
+          ticket_id: ticket.id,
+          prize_amount: 10,
+          prize_tier: 'tier3',
+        });
+      }
+
+      // Insert winners
+      const { error: winnersError } = await supabase
+        .from('winners')
+        .insert(winners);
+
+      if (winnersError) {
+        console.error('Error inserting winners:', winnersError);
+        return;
+      }
+
+      // Update draw status
+      const totalPrizePool = winners.reduce((sum, winner) => sum + winner.prize_amount, 0);
+      const { error: drawError } = await supabase
+        .from('draws')
+        .update({ 
+          status: 'completed',
+          prize_pool: totalPrizePool,
+        })
+        .eq('id', currentDraw.id);
+
+      if (!drawError) {
+        setCurrentDraw(prev => prev ? { 
+          ...prev, 
+          status: 'completed',
+          prizePool: totalPrizePool,
+        } : null);
+
+        // Update winners' wallet balances
+        for (const winner of winners) {
+          await supabase
+            .from('users')
+            .update({ 
+              wallet_balance: supabase.raw(`wallet_balance + ${winner.prize_amount}`)
+            })
+            .eq('id', winner.user_id);
+        }
+
+        // Refresh data
+        await loadRecentWinners();
+        await checkDrawResults();
+        
+        // Create next draw
+        setTimeout(() => {
+          loadCurrentDraw();
+        }, 1000);
+      }
     } catch (error) {
-      console.log('Error performing draw:', error);
+      console.error('Error performing draw:', error);
     }
   };
 
   const checkDrawResults = async () => {
-    // Check if user won
-    if (!user || !currentDraw || currentDraw.status !== 'completed') return;
-    
-    const userWinningTickets = userTickets.filter(ticket => 
-      currentDraw.winners.some(winner => winner.ticketNumber === ticket.number)
-    );
-    
-    if (userWinningTickets.length > 0) {
-      // User won! Show popup and update balance
-      const totalWinnings = userWinningTickets.reduce((sum, ticket) => {
-        const winner = currentDraw.winners.find(w => w.ticketNumber === ticket.number);
-        return sum + (winner?.amount || 0);
-      }, 0);
+    try {
+      if (!user || !currentDraw) return;
       
-      await updateUser({ walletBalance: user.walletBalance + totalWinnings });
+      // Check if user won in the current draw
+      const { data: userWins, error } = await supabase
+        .from('winners')
+        .select('*')
+        .eq('draw_id', currentDraw.id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error checking draw results:', error);
+        return;
+      }
+
+      if (userWins && userWins.length > 0) {
+        const totalWinnings = userWins.reduce((sum, win) => sum + win.prize_amount, 0);
+        Alert.alert(
+          '🎉 Congratulations! 🎉',
+          `You won $${totalWinnings}! The money has been added to your wallet.`,
+          [{ text: 'Amazing!' }]
+        );
+
+        // Update user's wallet balance in context
+        await updateUser({ walletBalance: user.walletBalance + totalWinnings });
+      }
+    } catch (error) {
+      console.error('Error checking draw results:', error);
     }
   };
 

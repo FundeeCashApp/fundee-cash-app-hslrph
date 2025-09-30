@@ -1,7 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '@/types';
+import { supabase } from '@/app/integrations/supabase/client';
+import { Alert } from 'react-native';
 
 interface AuthContextType {
   user: User | null;
@@ -30,17 +31,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadStoredUser();
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      if (session?.user) {
+        await loadUserProfile(session.user.id);
+      } else {
+        setUser(null);
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const loadStoredUser = async () => {
+  const loadUserProfile = async (authUserId: string) => {
     try {
-      const storedUser = await AsyncStorage.getItem('user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authUserId)
+        .single();
+
+      if (error) {
+        console.error('Error loading user profile:', error);
+        return;
+      }
+
+      if (data) {
+        const userProfile: User = {
+          id: data.id,
+          authUserId: data.auth_user_id,
+          firstName: data.first_name,
+          lastName: data.last_name,
+          email: data.email,
+          phoneNumber: data.phone_number,
+          country: data.country,
+          referralCode: data.referral_code,
+          referredBy: data.referred_by,
+          profilePhoto: data.profile_photo_url,
+          walletBalance: data.wallet_balance,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+        setUser(userProfile);
       }
     } catch (error) {
-      console.log('Error loading stored user:', error);
+      console.error('Error loading user profile:', error);
     } finally {
       setIsLoading(false);
     }
@@ -59,22 +106,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       
-      // Simulate API call - In real app, this would be a Supabase call
-      const storedUsers = await AsyncStorage.getItem('users');
-      const users = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      const foundUser = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (foundUser) {
-        const { password: _, ...userWithoutPassword } = foundUser;
-        setUser(userWithoutPassword);
-        await AsyncStorage.setItem('user', JSON.stringify(userWithoutPassword));
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('Login error:', error);
+        Alert.alert('Login Error', error.message);
+        return false;
+      }
+
+      if (data.user) {
+        await loadUserProfile(data.user.id);
         return true;
       }
-      
+
       return false;
     } catch (error) {
-      console.log('Login error:', error);
+      console.error('Login error:', error);
+      Alert.alert('Login Error', 'An unexpected error occurred');
       return false;
     } finally {
       setIsLoading(false);
@@ -85,42 +136,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       
-      // Check if user already exists
-      const storedUsers = await AsyncStorage.getItem('users');
-      const users = storedUsers ? JSON.parse(storedUsers) : [];
-      
-      const existingUser = users.find((u: any) => u.email === userData.email);
-      if (existingUser) {
+      // First, sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          emailRedirectTo: 'https://natively.dev/email-confirmed'
+        }
+      });
+
+      if (authError) {
+        console.error('Signup error:', authError);
+        Alert.alert('Signup Error', authError.message);
         return false;
       }
 
-      // Create new user
-      const newUser: User & { password: string } = {
-        id: Date.now().toString(),
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        email: userData.email,
-        phoneNumber: userData.phoneNumber,
-        country: userData.country,
-        referralCode: generateReferralCode(),
-        walletBalance: 0,
-        ticketCount: 0,
-        createdAt: new Date().toISOString(),
-        password: userData.password,
-      };
+      if (!authData.user) {
+        Alert.alert('Signup Error', 'Failed to create account');
+        return false;
+      }
 
-      // Save to storage
-      users.push(newUser);
-      await AsyncStorage.setItem('users', JSON.stringify(users));
-      
-      // Set current user (without password)
-      const { password: _, ...userWithoutPassword } = newUser;
-      setUser(userWithoutPassword);
-      await AsyncStorage.setItem('user', JSON.stringify(userWithoutPassword));
-      
+      // Create user profile in our users table
+      const referralCode = generateReferralCode();
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          auth_user_id: authData.user.id,
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+          email: userData.email,
+          phone_number: userData.phoneNumber,
+          country: userData.country,
+          referral_code: referralCode,
+          referred_by: userData.referralCode || null,
+        });
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        Alert.alert('Signup Error', 'Failed to create user profile');
+        return false;
+      }
+
+      // Show email verification alert
+      Alert.alert(
+        'Account Created!',
+        'Please check your email and click the verification link to complete your registration.',
+        [{ text: 'OK' }]
+      );
+
       return true;
     } catch (error) {
-      console.log('Signup error:', error);
+      console.error('Signup error:', error);
+      Alert.alert('Signup Error', 'An unexpected error occurred');
       return false;
     } finally {
       setIsLoading(false);
@@ -129,10 +196,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async (): Promise<void> => {
     try {
-      await AsyncStorage.removeItem('user');
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Logout error:', error);
+      }
       setUser(null);
     } catch (error) {
-      console.log('Logout error:', error);
+      console.error('Logout error:', error);
     }
   };
 
@@ -140,31 +210,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user) return;
       
-      const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      // Update in users array
-      const storedUsers = await AsyncStorage.getItem('users');
-      const users = storedUsers ? JSON.parse(storedUsers) : [];
-      const userIndex = users.findIndex((u: any) => u.id === user.id);
-      
-      if (userIndex !== -1) {
-        users[userIndex] = { ...users[userIndex], ...userData };
-        await AsyncStorage.setItem('users', JSON.stringify(users));
+      const updateData: any = {};
+      if (userData.firstName) updateData.first_name = userData.firstName;
+      if (userData.lastName) updateData.last_name = userData.lastName;
+      if (userData.email) updateData.email = userData.email;
+      if (userData.phoneNumber) updateData.phone_number = userData.phoneNumber;
+      if (userData.profilePhoto) updateData.profile_photo_url = userData.profilePhoto;
+      if (userData.walletBalance !== undefined) updateData.wallet_balance = userData.walletBalance;
+
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Update user error:', error);
+        Alert.alert('Update Error', error.message);
+        return;
       }
+
+      // Update local user state
+      setUser({ ...user, ...userData });
     } catch (error) {
-      console.log('Update user error:', error);
+      console.error('Update user error:', error);
+      Alert.alert('Update Error', 'An unexpected error occurred');
     }
   };
 
   const forgotPassword = async (email: string): Promise<boolean> => {
     try {
-      // Simulate password reset - In real app, this would send an email
-      console.log('Password reset requested for:', email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://natively.dev/reset-password',
+      });
+
+      if (error) {
+        console.error('Forgot password error:', error);
+        Alert.alert('Reset Password Error', error.message);
+        return false;
+      }
+
+      Alert.alert(
+        'Reset Password',
+        'Please check your email for password reset instructions.',
+        [{ text: 'OK' }]
+      );
       return true;
     } catch (error) {
-      console.log('Forgot password error:', error);
+      console.error('Forgot password error:', error);
+      Alert.alert('Reset Password Error', 'An unexpected error occurred');
       return false;
     }
   };

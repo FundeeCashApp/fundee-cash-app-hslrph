@@ -47,15 +47,8 @@ export default function HomeScreen() {
   };
 
   const handleBuyTicket = async () => {
-    if (!user?.ticketCount || user.ticketCount <= 0) {
-      Alert.alert(
-        'No Tickets Available',
-        'You need to earn tickets by watching ads or referring friends.',
-        [
-          { text: 'Watch Ads', onPress: () => router.push('/(tabs)/wallet') },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
+    if (!currentDraw || currentDraw.status !== 'pending') {
+      Alert.alert('Error', 'No active draw available');
       return;
     }
 
@@ -63,10 +56,11 @@ export default function HomeScreen() {
     if (ticketNumber) {
       Alert.alert(
         'Ticket Purchased!',
-        `Your ticket number is: ${ticketNumber}\nGood luck in today's draw!`
+        `Your ticket number is: ${ticketNumber}\n\nGood luck in today's draw!`,
+        [{ text: 'OK' }]
       );
     } else {
-      Alert.alert('Error', 'Failed to purchase ticket. Please try again.');
+      Alert.alert('Error', 'Failed to purchase ticket');
     }
   };
 
@@ -166,16 +160,16 @@ export default function HomeScreen() {
       <View style={[commonStyles.card, styles.ticketCard]}>
         <Text style={styles.cardTitle}>Get Your Tickets</Text>
         <Text style={styles.ticketBalance}>
-          Available Tickets: {user.ticketCount}
+          Your Tickets: {userTickets.length}
         </Text>
         
         <Button
           onPress={handleBuyTicket}
           style={styles.buyTicketButton}
-          disabled={!user.ticketCount || user.ticketCount <= 0}
+          disabled={!currentDraw || currentDraw.status !== 'pending'}
         >
           <Text style={styles.buyTicketText}>
-            {user.ticketCount > 0 ? 'Buy Ticket' : 'No Tickets Available'}
+            {currentDraw?.status === 'pending' ? 'Buy Ticket' : 'Draw Not Active'}
           </Text>
         </Button>
         
@@ -195,10 +189,12 @@ export default function HomeScreen() {
           {recentWinners.slice(0, 5).map((winner, index) => (
             <View key={winner.id} style={styles.winnerItem}>
               <View style={styles.winnerInfo}>
-                <Text style={styles.winnerName}>{winner.userName}</Text>
-                <Text style={styles.winnerTicket}>#{winner.ticketNumber}</Text>
+                <Text style={styles.winnerName}>
+                  {winner.user?.firstName} {winner.user?.lastName}
+                </Text>
+                <Text style={styles.winnerTicket}>Ticket #{winner.ticketId}</Text>
               </View>
-              <Text style={styles.winnerAmount}>${winner.amount}</Text>
+              <Text style={styles.winnerAmount}>${winner.prizeAmount}</Text>
             </View>
           ))}
         </View>

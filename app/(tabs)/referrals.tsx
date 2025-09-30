@@ -14,8 +14,8 @@ import { colors, commonStyles } from '@/styles/commonStyles';
 import { Button } from '@/components/button';
 import { IconSymbol } from '@/components/IconSymbol';
 import * as Clipboard from 'expo-clipboard';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Referral } from '@/types';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function ReferralsScreen() {
   const { user } = useAuth();
@@ -32,14 +32,40 @@ export default function ReferralsScreen() {
     try {
       if (!user) return;
       
-      const storedReferrals = await AsyncStorage.getItem(`referrals_${user.id}`);
-      if (storedReferrals) {
-        const referralList = JSON.parse(storedReferrals);
-        setReferrals(referralList);
-        setTotalEarned(referralList.length);
+      const { data, error } = await supabase
+        .from('users')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          created_at
+        `)
+        .eq('referred_by', user.referralCode);
+
+      if (error) {
+        console.error('Error loading referrals:', error);
+        return;
+      }
+
+      if (data) {
+        const referralData: Referral[] = data.map(referredUser => ({
+          id: referredUser.id,
+          referrerId: user.id,
+          referredUserId: referredUser.id,
+          ticketEarned: true,
+          createdAt: referredUser.created_at,
+          referredUser: {
+            firstName: referredUser.first_name,
+            lastName: referredUser.last_name,
+            email: referredUser.email,
+          },
+        }));
+        setReferrals(referralData);
+        setTotalEarned(referralData.length);
       }
     } catch (error) {
-      console.log('Error loading referrals:', error);
+      console.error('Error loading referrals:', error);
     }
   };
 
@@ -167,7 +193,9 @@ export default function ReferralsScreen() {
           referrals.map((referral) => (
             <View key={referral.id} style={styles.referralItem}>
               <View style={styles.referralInfo}>
-                <Text style={styles.referralName}>{referral.referredUserName}</Text>
+                <Text style={styles.referralName}>
+                  {referral.referredUser?.firstName} {referral.referredUser?.lastName}
+                </Text>
                 <Text style={styles.referralDate}>
                   {new Date(referral.createdAt).toLocaleDateString()}
                 </Text>
