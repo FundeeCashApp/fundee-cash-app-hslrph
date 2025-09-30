@@ -14,6 +14,8 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { Button } from "@/components/button";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { AppProvider } from "@/contexts/AppContext";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -65,47 +67,57 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
-          <GestureHandlerRootView>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-              }}
-            >
-              {/* Main app group */}
-              <Stack.Screen name="(index)" />
-
-              {/* Modal Demo Screens */}
-              <Stack.Screen
-                name="modal-demo"
-                options={{
-                  presentation: "modal",
-                  headerShown: true,
-                }}
-              />
-              <Stack.Screen
-                name="formsheet-demo"
-                options={{
-                  presentation: "formSheet",
-                  sheetGrabberVisible: true,
-                  sheetAllowedDetents: [0.5, 0.8, 1.0],
-                  sheetCornerRadius: 20,
-                  headerShown: true,
-                }}
-              />
-              <Stack.Screen
-                name="transparent-modal-demo"
-                options={{
-                  presentation: "transparentModal",
+      <AuthProvider>
+        <AppProvider>
+          <ThemeProvider
+            value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+          >
+            <GestureHandlerRootView>
+              <Stack
+                screenOptions={{
                   headerShown: false,
                 }}
-              />
-            </Stack>
-            <SystemBars style={"auto"} />
-          </GestureHandlerRootView>
-        </ThemeProvider>
+              >
+                {/* Auth screens */}
+                <Stack.Screen name="auth/login" />
+                <Stack.Screen name="auth/signup" />
+                <Stack.Screen name="auth/forgot-password" />
+                
+                {/* Main app group */}
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(index)" />
+
+                {/* Modal screens */}
+                <Stack.Screen
+                  name="modals/winner-popup"
+                  options={{
+                    presentation: "transparentModal",
+                    headerShown: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="modals/ad-viewer"
+                  options={{
+                    presentation: "modal",
+                    headerShown: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="modals/withdrawal"
+                  options={{
+                    presentation: "formSheet",
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [0.7, 1.0],
+                    sheetCornerRadius: 20,
+                    headerShown: false,
+                  }}
+                />
+              </Stack>
+              <SystemBars style={"auto"} />
+            </GestureHandlerRootView>
+          </ThemeProvider>
+        </AppProvider>
+      </AuthProvider>
     </>
   );
 }
