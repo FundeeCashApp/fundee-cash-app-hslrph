@@ -31,23 +31,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
+    // Get initial session with increased timeout handling
+    const initializeAuth = async () => {
+      try {
+        console.log('Initializing auth...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setIsLoading(false);
+          return;
+        }
+
+        if (session?.user) {
+          console.log('Found existing session for user:', session.user.id);
+          await loadUserProfile(session.user.id);
+        } else {
+          console.log('No existing session found');
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
         setIsLoading(false);
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session?.user?.id);
       
-      if (session?.user) {
-        await loadUserProfile(session.user.id);
-      } else {
-        setUser(null);
+      try {
+        if (session?.user) {
+          await loadUserProfile(session.user.id);
+        } else {
+          setUser(null);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error('Error handling auth state change:', error);
         setIsLoading(false);
       }
     });
@@ -57,14 +80,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadUserProfile = async (authUserId: string) => {
     try {
-      const { data, error } = await supabase
+      console.log('Loading user profile for:', authUserId);
+      
+      // Add timeout handling for database queries
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile load timeout')), 20000); // 20 second timeout
+      });
+
+      const queryPromise = supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUserId)
         .single();
 
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
       if (error) {
         console.error('Error loading user profile:', error);
+        setIsLoading(false);
         return;
       }
 
@@ -84,10 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: data.created_at,
           updatedAt: data.updated_at,
         };
+        console.log('User profile loaded successfully');
         setUser(userProfile);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
+      if (error instanceof Error && error.message === 'Profile load timeout') {
+        Alert.alert('Connection Error', 'Unable to load user profile. Please check your internet connection and try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -105,11 +142,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
+      console.log('Attempting login for:', email);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Add timeout handling for login
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Login timeout')), 25000); // 25 second timeout
+      });
+
+      const loginPromise = supabase.auth.signInWithPassword({
         email,
         password,
       });
+
+      const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Login error:', error);
@@ -118,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
+        console.log('Login successful for user:', data.user.id);
         await loadUserProfile(data.user.id);
         return true;
       }
@@ -125,7 +171,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Error', 'An unexpected error occurred');
+      if (error instanceof Error && error.message === 'Login timeout') {
+        Alert.alert('Connection Error', 'Login request timed out. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Login Error', 'An unexpected error occurred');
+      }
       return false;
     } finally {
       setIsLoading(false);
@@ -135,15 +185,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signup = async (userData: SignupData): Promise<boolean> => {
     try {
       setIsLoading(true);
+      console.log('Attempting signup for:', userData.email);
       
+      // Add timeout handling for signup
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Signup timeout')), 30000); // 30 second timeout
+      });
+
       // First, sign up with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const signupPromise = supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
         options: {
           emailRedirectTo: 'https://natively.dev/email-confirmed'
         }
       });
+
+      const { data: authData, error: authError } = await Promise.race([signupPromise, timeoutPromise]) as any;
 
       if (authError) {
         console.error('Signup error:', authError);
@@ -158,7 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Create user profile in our users table
       const referralCode = generateReferralCode();
-      const { error: profileError } = await supabase
+      const profilePromise = supabase
         .from('users')
         .insert({
           auth_user_id: authData.user.id,
@@ -170,6 +228,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           referral_code: referralCode,
           referred_by: userData.referralCode || null,
         });
+
+      const { error: profileError } = await Promise.race([profilePromise, timeoutPromise]) as any;
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
@@ -184,10 +244,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         [{ text: 'OK' }]
       );
 
+      console.log('Signup successful for user:', authData.user.id);
       return true;
     } catch (error) {
       console.error('Signup error:', error);
-      Alert.alert('Signup Error', 'An unexpected error occurred');
+      if (error instanceof Error && error.message === 'Signup timeout') {
+        Alert.alert('Connection Error', 'Signup request timed out. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Signup Error', 'An unexpected error occurred');
+      }
       return false;
     } finally {
       setIsLoading(false);
@@ -196,6 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async (): Promise<void> => {
     try {
+      console.log('Logging out user');
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Logout error:', error);
@@ -210,6 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user) return;
       
+      console.log('Updating user profile');
       const updateData: any = {};
       if (userData.firstName) updateData.first_name = userData.firstName;
       if (userData.lastName) updateData.last_name = userData.lastName;
@@ -218,10 +285,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (userData.profilePhoto) updateData.profile_photo_url = userData.profilePhoto;
       if (userData.walletBalance !== undefined) updateData.wallet_balance = userData.walletBalance;
 
-      const { error } = await supabase
+      // Add timeout handling for update
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Update timeout')), 20000); // 20 second timeout
+      });
+
+      const updatePromise = supabase
         .from('users')
         .update(updateData)
         .eq('id', user.id);
+
+      const { error } = await Promise.race([updatePromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Update user error:', error);
@@ -231,17 +305,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Update local user state
       setUser({ ...user, ...userData });
+      console.log('User profile updated successfully');
     } catch (error) {
       console.error('Update user error:', error);
-      Alert.alert('Update Error', 'An unexpected error occurred');
+      if (error instanceof Error && error.message === 'Update timeout') {
+        Alert.alert('Connection Error', 'Update request timed out. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Update Error', 'An unexpected error occurred');
+      }
     }
   };
 
   const forgotPassword = async (email: string): Promise<boolean> => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      console.log('Requesting password reset for:', email);
+      
+      // Add timeout handling for password reset
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Password reset timeout')), 20000); // 20 second timeout
+      });
+
+      const resetPromise = supabase.auth.resetPasswordForEmail(email, {
         redirectTo: 'https://natively.dev/reset-password',
       });
+
+      const { error } = await Promise.race([resetPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Forgot password error:', error);
@@ -254,10 +342,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'Please check your email for password reset instructions.',
         [{ text: 'OK' }]
       );
+      console.log('Password reset email sent successfully');
       return true;
     } catch (error) {
       console.error('Forgot password error:', error);
-      Alert.alert('Reset Password Error', 'An unexpected error occurred');
+      if (error instanceof Error && error.message === 'Password reset timeout') {
+        Alert.alert('Connection Error', 'Password reset request timed out. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Reset Password Error', 'An unexpected error occurred');
+      }
       return false;
     }
   };

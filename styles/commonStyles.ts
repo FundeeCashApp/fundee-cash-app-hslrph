@@ -1,3 +1,4 @@
+
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
 export const colors = {
@@ -14,6 +15,36 @@ export const colors = {
   warning: '#ffc107',    // Yellow for warning
   danger: '#dc3545',     // Red for danger
   border: '#dee2e6',     // Border color
+};
+
+// Font families with fallbacks
+export const fonts = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semiBold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
+  robotoRegular: 'Roboto_400Regular',
+  robotoMedium: 'Roboto_500Medium',
+  robotoBold: 'Roboto_700Bold',
+  // Fallback fonts
+  fallbackRegular: 'SpaceMono',
+  fallbackBold: 'SpaceMonoBold',
+  // System fallbacks
+  systemRegular: 'System',
+  systemBold: 'System',
+};
+
+// Helper function to get font with fallbacks
+export const getFontFamily = (fontWeight: 'regular' | 'medium' | 'semiBold' | 'bold' = 'regular') => {
+  const fontMap = {
+    regular: [fonts.regular, fonts.robotoRegular, fonts.fallbackRegular, fonts.systemRegular],
+    medium: [fonts.medium, fonts.robotoMedium, fonts.fallbackRegular, fonts.systemRegular],
+    semiBold: [fonts.semiBold, fonts.robotoBold, fonts.fallbackBold, fonts.systemBold],
+    bold: [fonts.bold, fonts.robotoBold, fonts.fallbackBold, fonts.systemBold],
+  };
+  
+  // Return the first available font, with system font as ultimate fallback
+  return fontMap[fontWeight][0] || 'System';
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -53,6 +84,7 @@ export const commonStyles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
+    fontFamily: getFontFamily('bold'),
     textAlign: 'center',
     color: colors.text,
     marginBottom: 16
@@ -60,6 +92,7 @@ export const commonStyles = StyleSheet.create({
   subtitle: {
     fontSize: 20,
     fontWeight: '600',
+    fontFamily: getFontFamily('semiBold'),
     textAlign: 'center',
     color: colors.text,
     marginBottom: 12
@@ -67,6 +100,7 @@ export const commonStyles = StyleSheet.create({
   text: {
     fontSize: 16,
     fontWeight: '400',
+    fontFamily: getFontFamily('regular'),
     color: colors.text,
     marginBottom: 8,
     lineHeight: 24,
@@ -75,6 +109,7 @@ export const commonStyles = StyleSheet.create({
   textSecondary: {
     fontSize: 14,
     fontWeight: '400',
+    fontFamily: getFontFamily('regular'),
     color: colors.textSecondary,
     marginBottom: 8,
     lineHeight: 20,
@@ -108,6 +143,7 @@ export const commonStyles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    fontFamily: getFontFamily('regular'),
     color: colors.text,
     width: '100%',
     marginBottom: 16,

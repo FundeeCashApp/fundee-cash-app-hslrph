@@ -1,3 +1,4 @@
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
 import { createClient } from '@supabase/supabase-js'
@@ -14,5 +15,26 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'fundee-cash-app',
+    },
+  },
+  db: {
+    schema: 'public',
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+  // Increase timeout from default 6000ms to 30000ms (30 seconds)
+  // This should fix the "6000ms timeout exceeded" error
+  fetch: (url, options = {}) => {
+    return fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(30000), // 30 second timeout
+    });
   },
 })

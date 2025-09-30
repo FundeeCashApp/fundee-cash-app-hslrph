@@ -57,14 +57,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [adCooldownTime]);
 
   const initializeData = async () => {
-    await loadCurrentDraw();
-    await loadUserTickets();
-    await loadRecentWinners();
-    await loadAdWatchData();
+    try {
+      console.log('Initializing app data...');
+      await Promise.all([
+        loadCurrentDraw(),
+        loadRecentWinners(),
+        loadAdWatchData(),
+      ]);
+      // Load user tickets after current draw is loaded
+      setTimeout(() => loadUserTickets(), 500);
+    } catch (error) {
+      console.error('Error initializing app data:', error);
+    }
   };
 
   const loadCurrentDraw = async () => {
     try {
+      console.log('Loading current draw...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Draw load timeout')), 15000); // 15 second timeout
+      });
+
       // Get today's draw
       const today = new Date();
       const drawDate = today.toISOString().split('T')[0];
@@ -78,11 +93,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         drawTime.setDate(drawTime.getDate() + 1);
       }
 
-      const { data: existingDraw, error } = await supabase
+      const queryPromise = supabase
         .from('draws')
         .select('*')
         .eq('draw_date', drawTime.toISOString().split('T')[0])
         .single();
+
+      const { data: existingDraw, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error loading draw:', error);
@@ -102,9 +119,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           updatedAt: existingDraw.updated_at,
         };
         setCurrentDraw(draw);
+        console.log('Current draw loaded successfully');
       } else {
         // Create new draw
-        const { data: newDraw, error: createError } = await supabase
+        const createPromise = supabase
           .from('draws')
           .insert({
             draw_date: drawTime.toISOString().split('T')[0],
@@ -113,6 +131,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           })
           .select()
           .single();
+
+        const { data: newDraw, error: createError } = await Promise.race([createPromise, timeoutPromise]) as any;
 
         if (createError) {
           console.error('Error creating draw:', createError);
@@ -132,10 +152,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             updatedAt: newDraw.updated_at,
           };
           setCurrentDraw(draw);
+          console.log('New draw created successfully');
         }
       }
     } catch (error) {
       console.error('Error loading current draw:', error);
+      if (error instanceof Error && error.message === 'Draw load timeout') {
+        Alert.alert('Connection Error', 'Unable to load draw information. Please check your internet connection.');
+      }
     }
   };
 
@@ -143,11 +167,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user || !currentDraw) return;
       
-      const { data, error } = await supabase
+      console.log('Loading user tickets...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Tickets load timeout')), 10000); // 10 second timeout
+      });
+
+      const queryPromise = supabase
         .from('tickets')
         .select('*')
         .eq('user_id', user.id)
         .eq('draw_id', currentDraw.id);
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error loading user tickets:', error);
@@ -164,15 +197,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           createdAt: ticket.created_at,
         }));
         setUserTickets(tickets);
+        console.log('User tickets loaded successfully:', tickets.length);
       }
     } catch (error) {
       console.error('Error loading user tickets:', error);
+      if (error instanceof Error && error.message === 'Tickets load timeout') {
+        console.warn('Tickets load timed out, continuing with empty array');
+        setUserTickets([]);
+      }
     }
   };
 
   const loadRecentWinners = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Loading recent winners...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Winners load timeout')), 10000); // 10 second timeout
+      });
+
+      const queryPromise = supabase
         .from('winners')
         .select(`
           *,
@@ -180,6 +225,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         `)
         .order('created_at', { ascending: false })
         .limit(50);
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error loading recent winners:', error);
@@ -201,9 +248,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           },
         }));
         setRecentWinners(winners);
+        console.log('Recent winners loaded successfully:', winners.length);
       }
     } catch (error) {
       console.error('Error loading recent winners:', error);
+      if (error instanceof Error && error.message === 'Winners load timeout') {
+        console.warn('Winners load timed out, continuing with empty array');
+        setRecentWinners([]);
+      }
     }
   };
 
@@ -211,15 +263,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user) return;
       
+      console.log('Loading ad watch data...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Ad data load timeout')), 8000); // 8 second timeout
+      });
+      
       // Get today's ad watches
       const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
+      const queryPromise = supabase
         .from('ad_watches')
         .select('*')
         .eq('user_id', user.id)
         .gte('watched_at', `${today}T00:00:00`)
         .lt('watched_at', `${today}T23:59:59`)
         .order('watched_at', { ascending: false });
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error loading ad watch data:', error);
@@ -255,9 +316,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setIsAdButtonActive(false);
           }
         }
+        console.log('Ad watch data loaded successfully');
       }
     } catch (error) {
       console.error('Error loading ad watch data:', error);
+      if (error instanceof Error && error.message === 'Ad data load timeout') {
+        console.warn('Ad data load timed out, continuing with defaults');
+      }
     }
   };
 
@@ -279,7 +344,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const generateTicketNumber = async (): Promise<string> => {
     try {
-      const { data, error } = await supabase.rpc('generate_ticket_number');
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Ticket generation timeout')), 5000); // 5 second timeout
+      });
+
+      const rpcPromise = supabase.rpc('generate_ticket_number');
+      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+      
       if (error) {
         console.error('Error generating ticket number:', error);
         // Fallback to client-side generation
@@ -297,10 +369,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user || !currentDraw) return null;
       
+      console.log('Buying ticket...');
       const ticketNumber = await generateTicketNumber();
       
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Ticket purchase timeout')), 15000); // 15 second timeout
+      });
+      
       // Insert ticket into database
-      const { data, error } = await supabase
+      const insertPromise = supabase
         .from('tickets')
         .insert({
           user_id: user.id,
@@ -311,9 +389,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .select()
         .single();
 
+      const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
+
       if (error) {
         console.error('Error buying ticket:', error);
-        Alert.alert('Error', 'Failed to purchase ticket');
+        Alert.alert('Error', 'Failed to purchase ticket. Please try again.');
         return null;
       }
 
@@ -330,21 +410,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setUserTickets(prev => [...prev, newTicket]);
 
         // Update draw total tickets
-        const { error: updateError } = await supabase
+        const updatePromise = supabase
           .from('draws')
           .update({ total_tickets: currentDraw.totalTickets + 1 })
           .eq('id', currentDraw.id);
 
-        if (!updateError) {
-          setCurrentDraw(prev => prev ? { ...prev, totalTickets: prev.totalTickets + 1 } : null);
-        }
+        // Don't wait for this update, just fire and forget
+        updatePromise.then(({ error: updateError }) => {
+          if (!updateError) {
+            setCurrentDraw(prev => prev ? { ...prev, totalTickets: prev.totalTickets + 1 } : null);
+          }
+        });
 
+        console.log('Ticket purchased successfully:', ticketNumber);
         return ticketNumber;
       }
 
       return null;
     } catch (error) {
       console.error('Error buying ticket:', error);
+      if (error instanceof Error && error.message === 'Ticket purchase timeout') {
+        Alert.alert('Connection Error', 'Ticket purchase timed out. Please check your internet connection and try again.');
+      }
       return null;
     }
   };
@@ -353,10 +440,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user || !isAdButtonActive || !currentDraw) return false;
       
+      console.log('Watching ad...');
       const newCount = adWatchCount + 1;
       
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Ad watch timeout')), 15000); // 15 second timeout
+      });
+      
       // Record ad watch
-      const { error: adError } = await supabase
+      const adPromise = supabase
         .from('ad_watches')
         .insert({
           user_id: user.id,
@@ -364,14 +457,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ticket_earned: true,
         });
 
+      const { error: adError } = await Promise.race([adPromise, timeoutPromise]) as any;
+
       if (adError) {
-        console.error('Error recording ad watch:', error);
+        console.error('Error recording ad watch:', adError);
         return false;
       }
 
       // Award ticket
       const ticketNumber = await generateTicketNumber();
-      const { data, error: ticketError } = await supabase
+      const ticketPromise = supabase
         .from('tickets')
         .insert({
           user_id: user.id,
@@ -381,6 +476,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         })
         .select()
         .single();
+
+      const { data, error: ticketError } = await Promise.race([ticketPromise, timeoutPromise]) as any;
 
       if (ticketError) {
         console.error('Error awarding ticket:', ticketError);
@@ -407,9 +504,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setIsAdButtonActive(false);
       }
       
+      console.log('Ad watched successfully, ticket awarded');
       return true;
     } catch (error) {
       console.error('Error watching ad:', error);
+      if (error instanceof Error && error.message === 'Ad watch timeout') {
+        Alert.alert('Connection Error', 'Ad watch timed out. Please check your internet connection and try again.');
+      }
       return false;
     }
   };
@@ -418,13 +519,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!currentDraw || currentDraw.status !== 'pending') return;
       
+      console.log('Performing draw...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Draw performance timeout')), 20000); // 20 second timeout
+      });
+      
       // Check if minimum tickets reached
       if (currentDraw.totalTickets < currentDraw.minimumTickets) {
         // Refund everyone
-        const { error } = await supabase
+        const refundPromise = supabase
           .from('draws')
           .update({ status: 'refunded' })
           .eq('id', currentDraw.id);
+
+        const { error } = await Promise.race([refundPromise, timeoutPromise]) as any;
 
         if (!error) {
           setCurrentDraw(prev => prev ? { ...prev, status: 'refunded' } : null);
@@ -438,10 +548,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Get all tickets for this draw
-      const { data: allTickets, error: ticketsError } = await supabase
+      const ticketsPromise = supabase
         .from('tickets')
         .select('*')
         .eq('draw_id', currentDraw.id);
+
+      const { data: allTickets, error: ticketsError } = await Promise.race([ticketsPromise, timeoutPromise]) as any;
 
       if (ticketsError || !allTickets || allTickets.length === 0) {
         console.error('Error getting tickets for draw:', ticketsError);
@@ -489,9 +601,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Insert winners
-      const { error: winnersError } = await supabase
+      const winnersPromise = supabase
         .from('winners')
         .insert(winners);
+
+      const { error: winnersError } = await Promise.race([winnersPromise, timeoutPromise]) as any;
 
       if (winnersError) {
         console.error('Error inserting winners:', winnersError);
@@ -500,13 +614,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Update draw status
       const totalPrizePool = winners.reduce((sum, winner) => sum + winner.prize_amount, 0);
-      const { error: drawError } = await supabase
+      const drawUpdatePromise = supabase
         .from('draws')
         .update({ 
           status: 'completed',
           prize_pool: totalPrizePool,
         })
         .eq('id', currentDraw.id);
+
+      const { error: drawError } = await Promise.race([drawUpdatePromise, timeoutPromise]) as any;
 
       if (!drawError) {
         setCurrentDraw(prev => prev ? { 
@@ -515,27 +631,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           prizePool: totalPrizePool,
         } : null);
 
-        // Update winners' wallet balances
+        // Update winners' wallet balances (fire and forget)
         for (const winner of winners) {
-          await supabase
+          supabase
             .from('users')
             .update({ 
               wallet_balance: supabase.raw(`wallet_balance + ${winner.prize_amount}`)
             })
-            .eq('id', winner.user_id);
+            .eq('id', winner.user_id)
+            .then(() => console.log(`Updated wallet for user ${winner.user_id}`))
+            .catch(err => console.error('Error updating wallet:', err));
         }
 
         // Refresh data
-        await loadRecentWinners();
-        await checkDrawResults();
-        
-        // Create next draw
         setTimeout(() => {
+          loadRecentWinners();
+          checkDrawResults();
           loadCurrentDraw();
         }, 1000);
+        
+        console.log('Draw completed successfully');
       }
     } catch (error) {
       console.error('Error performing draw:', error);
+      if (error instanceof Error && error.message === 'Draw performance timeout') {
+        Alert.alert('Connection Error', 'Draw processing timed out. Please check your internet connection.');
+      }
     }
   };
 
@@ -543,12 +664,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!user || !currentDraw) return;
       
+      console.log('Checking draw results...');
+      
+      // Add timeout handling
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Results check timeout')), 10000); // 10 second timeout
+      });
+      
       // Check if user won in the current draw
-      const { data: userWins, error } = await supabase
+      const queryPromise = supabase
         .from('winners')
         .select('*')
         .eq('draw_id', currentDraw.id)
         .eq('user_id', user.id);
+
+      const { data: userWins, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error checking draw results:', error);
@@ -565,13 +695,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         // Update user's wallet balance in context
         await updateUser({ walletBalance: user.walletBalance + totalWinnings });
+        console.log('User won:', totalWinnings);
       }
     } catch (error) {
       console.error('Error checking draw results:', error);
+      if (error instanceof Error && error.message === 'Results check timeout') {
+        console.warn('Results check timed out');
+      }
     }
   };
 
   const refreshData = async () => {
+    console.log('Refreshing app data...');
     await initializeData();
   };
 
