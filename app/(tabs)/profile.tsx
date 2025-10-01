@@ -302,9 +302,12 @@ export default function ProfileScreen() {
         )}
 
         {isEditing && (
-          <Button onPress={handleSaveChanges} style={styles.saveButton}>
-            <Text style={styles.saveButtonText}>Save Changes</Text>
-          </Button>
+          <Button 
+            title="Save Changes"
+            onPress={handleSaveChanges} 
+            style={styles.saveButton}
+            textStyle={styles.saveButtonText}
+          />
         )}
       </View>
 

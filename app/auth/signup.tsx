@@ -326,12 +326,12 @@ export default function SignupScreen() {
           </TouchableOpacity>
 
           <Button
+            title="Create Account"
             onPress={handleSignup}
             loading={isLoading}
             style={styles.signupButton}
-          >
-            <Text style={styles.signupButtonText}>Create Account</Text>
-          </Button>
+            textStyle={styles.signupButtonText}
+          />
 
           <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Already have an account? </Text>

@@ -96,20 +96,18 @@ export default function WalletScreen() {
         )}
         
         <Button
+          title={isAdButtonActive ? 'Watch Ad for 1 Ticket' : 'Ads Unavailable'}
           onPress={handleWatchAd}
           disabled={!isAdButtonActive}
           style={[
             styles.watchAdButton,
             !isAdButtonActive && styles.watchAdButtonDisabled
           ]}
-        >
-          <Text style={[
+          textStyle={[
             styles.watchAdText,
             !isAdButtonActive && styles.watchAdTextDisabled
-          ]}>
-            {isAdButtonActive ? 'Watch Ad for 1 Ticket' : 'Ads Unavailable'}
-          </Text>
-        </Button>
+          ]}
+        />
         
         <Text style={styles.adNote}>
           After watching 5 ads continuously, there&apos;s a 10-minute cooldown period.
@@ -140,20 +138,18 @@ export default function WalletScreen() {
         </View>
         
         <Button
+          title={user.walletBalance >= 10 ? 'Withdraw Funds' : 'Minimum $10 Required'}
           onPress={handleWithdraw}
           disabled={!user.walletBalance || user.walletBalance < 10}
           style={[
             styles.withdrawButton,
             (!user.walletBalance || user.walletBalance < 10) && styles.withdrawButtonDisabled
           ]}
-        >
-          <Text style={[
+          textStyle={[
             styles.withdrawText,
             (!user.walletBalance || user.walletBalance < 10) && styles.withdrawTextDisabled
-          ]}>
-            {user.walletBalance >= 10 ? 'Withdraw Funds' : 'Minimum $10 Required'}
-          </Text>
-        </Button>
+          ]}
+        />
         
         <Text style={styles.minimumNote}>
           Minimum withdrawal amount: $10

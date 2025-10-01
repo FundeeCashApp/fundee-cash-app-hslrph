@@ -113,12 +113,12 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <Button
+            title="Sign In"
             onPress={handleLogin}
             loading={isLoading}
             style={styles.loginButton}
-          >
-            <Text style={styles.loginButtonText}>Sign In</Text>
-          </Button>
+            textStyle={styles.loginButtonText}
+          />
 
           <View style={styles.signupContainer}>
             <Text style={styles.signupText}>Don&apos;t have an account? </Text>

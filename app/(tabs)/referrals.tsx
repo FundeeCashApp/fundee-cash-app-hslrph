@@ -102,10 +102,10 @@ export default function ReferralsScreen() {
             <IconSymbol name="doc.on.doc" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
-        <Button onPress={shareReferralLink} style={styles.shareButton}>
+        <TouchableOpacity onPress={shareReferralLink} style={styles.shareButton}>
           <IconSymbol name="square.and.arrow.up" size={16} color="white" />
           <Text style={styles.shareButtonText}>Share Referral Link</Text>
-        </Button>
+        </TouchableOpacity>
       </View>
 
       {/* Stats Card */}

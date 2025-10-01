@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ImageBackground,
   Dimensions,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -57,9 +56,9 @@ export default function WelcomeScreen() {
           <View style={styles.prizeInfo}>
             <Text style={styles.prizeTitle}>Daily Prizes</Text>
             <View style={styles.prizeRow}>
-              <Text style={styles.prizeText}>10 winners × $100</Text>
-              <Text style={styles.prizeText}>6 winners × $50</Text>
-              <Text style={styles.prizeText}>20 winners × $10</Text>
+              <Text style={styles.prizeText}>10 winners get $100 each</Text>
+              <Text style={styles.prizeText}>6 winners get $50 each</Text>
+              <Text style={styles.prizeText}>20 winners get $10 each</Text>
             </View>
             <Text style={styles.prizeNote}>
               Prizes increase as more members join!
@@ -69,11 +68,11 @@ export default function WelcomeScreen() {
           {/* Action Buttons */}
           <View style={styles.buttonSection}>
             <Button
+              title="Get Started"
               onPress={() => router.push('/auth/signup')}
               style={styles.signupButton}
-            >
-              <Text style={styles.signupButtonText}>Get Started</Text>
-            </Button>
+              textStyle={styles.signupButtonText}
+            />
             
             <TouchableOpacity
               onPress={() => router.push('/auth/login')}

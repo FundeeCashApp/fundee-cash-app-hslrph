@@ -144,10 +144,10 @@ export default function HomeScreen() {
       </View>
 
       {/* Buy Ticket Button */}
-      <Button onPress={handleBuyTicket} style={styles.buyButton}>
+      <TouchableOpacity onPress={handleBuyTicket} style={styles.buyButton}>
         <IconSymbol name="ticket.fill" size={20} color="white" />
         <Text style={styles.buyButtonText}>Buy Ticket - $1.00</Text>
-      </Button>
+      </TouchableOpacity>
 
       {/* Recent Winners */}
       {recentWinners.length > 0 && (

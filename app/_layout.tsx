@@ -124,7 +124,7 @@ function AppNavigator() {
       }}
     >
       {user ? (
-        // Authenticated user screens
+        // Authenticated user screens - main app
         <>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
@@ -153,13 +153,38 @@ function AppNavigator() {
           />
         </>
       ) : (
-        // Unauthenticated user screens
+        // Unauthenticated user screens - auth flow
         <>
-          <Stack.Screen name="welcome" />
-          <Stack.Screen name="auth/login" />
-          <Stack.Screen name="auth/signup" />
-          <Stack.Screen name="auth/forgot-password" />
-          <Stack.Screen name="email-confirmed" />
+          <Stack.Screen 
+            name="welcome" 
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="auth/login" 
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="auth/signup" 
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="auth/forgot-password" 
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen 
+            name="email-confirmed" 
+            options={{
+              headerShown: false,
+            }}
+          />
         </>
       )}
     </Stack>

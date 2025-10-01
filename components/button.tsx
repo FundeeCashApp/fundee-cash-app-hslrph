@@ -1,16 +1,18 @@
 
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
 import { colors, getFontFamily } from '@/styles/commonStyles';
 
 interface ButtonProps {
-  title: string;
+  title?: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'danger';
   size?: 'small' | 'medium' | 'large';
   disabled?: boolean;
+  loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  children?: React.ReactNode;
 }
 
 export function Button({
@@ -19,14 +21,16 @@ export function Button({
   variant = 'primary',
   size = 'medium',
   disabled = false,
+  loading = false,
   style,
   textStyle,
+  children,
 }: ButtonProps) {
   const buttonStyle = [
     styles.base,
     styles[variant],
     styles[size],
-    disabled && styles.disabled,
+    (disabled || loading) && styles.disabled,
     style,
   ];
 
@@ -34,7 +38,7 @@ export function Button({
     styles.text,
     styles[`${variant}Text`],
     styles[`${size}Text`],
-    disabled && styles.disabledText,
+    (disabled || loading) && styles.disabledText,
     textStyle,
   ];
 
@@ -42,10 +46,19 @@ export function Button({
     <TouchableOpacity
       style={buttonStyle}
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
       activeOpacity={0.7}
     >
-      <Text style={textStyles}>{title}</Text>
+      {loading ? (
+        <ActivityIndicator 
+          color={variant === 'outline' ? colors.primary : '#ffffff'} 
+          size="small" 
+        />
+      ) : (
+        <>
+          {children ? children : <Text style={textStyles}>{title}</Text>}
+        </>
+      )}
     </TouchableOpacity>
   );
 }

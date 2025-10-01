@@ -148,14 +148,17 @@ export default function HelpScreen() {
 
           <View style={styles.formButtons}>
             <Button
+              title="Cancel"
               onPress={() => setShowSupportForm(false)}
               style={[styles.formButton, styles.cancelButton]}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Button>
-            <Button onPress={handleSupportSubmit} style={[styles.formButton, styles.submitButton]}>
-              <Text style={styles.submitButtonText}>Send Message</Text>
-            </Button>
+              textStyle={styles.cancelButtonText}
+            />
+            <Button 
+              title="Send Message"
+              onPress={handleSupportSubmit} 
+              style={[styles.formButton, styles.submitButton]}
+              textStyle={styles.submitButtonText}
+            />
           </View>
         </View>
       )}
