@@ -77,11 +77,8 @@ export default function SignupScreen() {
 
     const success = await signup(formData);
     if (success) {
-      Alert.alert('Success', 'Account created successfully!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)') }
-      ]);
-    } else {
-      Alert.alert('Error', 'Email already exists or signup failed');
+      // Navigate back to welcome screen after successful signup
+      router.replace('/welcome');
     }
   };
 

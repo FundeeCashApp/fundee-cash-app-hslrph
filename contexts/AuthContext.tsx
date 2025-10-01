@@ -45,6 +45,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           console.log('Found existing session for user:', session.user.id);
+          // Check if email is confirmed
+          if (!session.user.email_confirmed_at) {
+            console.log('User email not confirmed, signing out');
+            await supabase.auth.signOut();
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
           await loadUserProfile(session.user.id);
         } else {
           console.log('No existing session found');
@@ -64,6 +72,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       try {
         if (session?.user) {
+          // Check if email is confirmed for login events
+          if (event === 'SIGNED_IN' && !session.user.email_confirmed_at) {
+            console.log('User signed in but email not confirmed');
+            Alert.alert(
+              'Email Not Verified',
+              'Please check your email and click the verification link before signing in.',
+              [{ text: 'OK' }]
+            );
+            await supabase.auth.signOut();
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
           await loadUserProfile(session.user.id);
         } else {
           setUser(null);
@@ -158,11 +179,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Login error:', error);
-        Alert.alert('Login Error', error.message);
+        
+        // Handle specific error cases
+        if (error.message.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email Not Verified',
+            'Please check your email and click the verification link to confirm your account before signing in.',
+            [{ text: 'OK' }]
+          );
+        } else if (error.message.includes('Invalid login credentials')) {
+          Alert.alert(
+            'Login Failed',
+            'Invalid email or password. Please check your credentials and try again.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert('Login Error', error.message || 'An error occurred during login');
+        }
         return false;
       }
 
       if (data.user) {
+        // Double-check email confirmation
+        if (!data.user.email_confirmed_at) {
+          console.log('User logged in but email not confirmed');
+          Alert.alert(
+            'Email Not Verified',
+            'Please check your email and click the verification link to confirm your account.',
+            [{ text: 'OK' }]
+          );
+          await supabase.auth.signOut();
+          return false;
+        }
+        
         console.log('Login successful for user:', data.user.id);
         await loadUserProfile(data.user.id);
         return true;
@@ -205,7 +254,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (authError) {
         console.error('Signup error:', authError);
-        Alert.alert('Signup Error', authError.message);
+        
+        // Handle specific error cases
+        if (authError.message.includes('User already registered')) {
+          Alert.alert(
+            'Account Exists',
+            'An account with this email already exists. Please try logging in instead.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert('Signup Error', authError.message || 'Failed to create account');
+        }
         return false;
       }
 
@@ -239,8 +298,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Show email verification alert
       Alert.alert(
-        'Account Created!',
-        'Please check your email and click the verification link to complete your registration.',
+        'Account Created Successfully!',
+        'We\'ve sent a verification email to your inbox. Please check your email and click the verification link to complete your registration. You can then sign in to your account.',
         [{ text: 'OK' }]
       );
 

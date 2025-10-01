@@ -33,9 +33,8 @@ export default function LoginScreen() {
 
     const success = await login(email, password);
     if (success) {
-      router.replace('/(tabs)');
-    } else {
-      Alert.alert('Error', 'Invalid email or password');
+      // Navigation will be handled automatically by the auth state change
+      console.log('Login successful, user will be redirected to main app');
     }
   };
 
@@ -46,6 +45,12 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <IconSymbol name="chevron.left" size={24} color={colors.text} />
+          </TouchableOpacity>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to Fundee Cash</Text>
         </View>
@@ -135,8 +140,12 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   header: {
-    alignItems: 'center',
     marginBottom: 40,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    padding: 8,
+    marginBottom: 16,
   },
   title: {
     fontSize: 32,

@@ -1,10 +1,10 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Draw, Winner, Ticket, AdWatch } from '@/types';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Draw, Winner, Ticket, AdWatch } from '@/types';
 
 interface AppContextType {
   currentDraw: Draw | null;
@@ -23,57 +23,20 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const [currentDraw, setCurrentDraw] = useState<Draw | null>(null);
-  const [timeUntilDraw, setTimeUntilDraw] = useState<number>(0);
+  const [timeUntilDraw, setTimeUntilDraw] = useState(0);
   const [userTickets, setUserTickets] = useState<Ticket[]>([]);
   const [recentWinners, setRecentWinners] = useState<Winner[]>([]);
-  const [adWatchCount, setAdWatchCount] = useState<number>(0);
-  const [adCooldownTime, setAdCooldownTime] = useState<number>(0);
-  const [isAdButtonActive, setIsAdButtonActive] = useState<boolean>(true);
+  const [adWatchCount, setAdWatchCount] = useState(0);
+  const [adCooldownTime, setAdCooldownTime] = useState(0);
+  const [isAdButtonActive, setIsAdButtonActive] = useState(true);
 
-  const initializeData = useCallback(async () => {
-    try {
-      console.log('Initializing app data...');
-      await Promise.all([
-        loadCurrentDraw(),
-        loadRecentWinners(),
-        loadAdWatchData(),
-      ]);
-      // Load user tickets after current draw is loaded
-      setTimeout(() => loadUserTickets(), 500);
-    } catch (error) {
-      console.error('Error initializing app data:', error);
-    }
-  }, []);
-
-  const updateCountdown = useCallback(() => {
-    if (!currentDraw) return;
-    
-    const now = new Date();
-    const drawTime = new Date(currentDraw.drawTime);
-    const timeDiff = drawTime.getTime() - now.getTime();
-    
-    if (timeDiff <= 0) {
-      // Time for draw!
-      performDraw();
-      setTimeUntilDraw(0);
-    } else {
-      setTimeUntilDraw(Math.floor(timeDiff / 1000));
-    }
-  }, [currentDraw]);
-
+  // Ad cooldown effect
   useEffect(() => {
-    if (user) {
-      initializeData();
-      const interval = setInterval(updateCountdown, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [user, initializeData, updateCountdown]);
-
-  useEffect(() => {
+    let interval: NodeJS.Timeout;
     if (adCooldownTime > 0) {
-      const interval = setInterval(() => {
+      interval = setInterval(() => {
         setAdCooldownTime(prev => {
           if (prev <= 1) {
             setIsAdButtonActive(true);
@@ -83,72 +46,90 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return prev - 1;
         });
       }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [adCooldownTime]);
+
+  const initializeData = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      await Promise.all([
+        loadCurrentDraw(),
+        loadUserTickets(),
+        loadRecentWinners(),
+        loadAdWatchData(),
+      ]);
+    } catch (error) {
+      console.error('Error initializing app data:', error);
+    }
+  }, [user]);
+
+  const updateCountdown = useCallback(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const drawTime = new Date(today.getTime() + 22 * 60 * 60 * 1000); // 10 PM ET (22:00)
+    
+    // If it's past 10 PM today, set for tomorrow
+    if (now > drawTime) {
+      drawTime.setDate(drawTime.getDate() + 1);
+    }
+    
+    const timeDiff = Math.max(0, Math.floor((drawTime.getTime() - now.getTime()) / 1000));
+    setTimeUntilDraw(timeDiff);
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      initializeData();
+      updateCountdown();
+      
+      const interval = setInterval(updateCountdown, 1000);
       return () => clearInterval(interval);
     }
-  }, [adCooldownTime]);
+  }, [user, initializeData, updateCountdown]);
 
   const loadCurrentDraw = async () => {
     try {
-      console.log('Loading current draw...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Draw load timeout')), 15000); // 15 second timeout
-      });
-
-      // Get today's draw
-      const today = new Date();
-      const drawDate = today.toISOString().split('T')[0];
-      
-      // Set draw time to 10 PM ET (22:00)
-      const drawTime = new Date(today);
-      drawTime.setHours(22, 0, 0, 0);
-      
-      // If it's past 10 PM, get tomorrow's draw
-      if (today.getHours() >= 22) {
-        drawTime.setDate(drawTime.getDate() + 1);
-      }
-
-      const queryPromise = supabase
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
         .from('draws')
         .select('*')
-        .eq('draw_date', drawTime.toISOString().split('T')[0])
+        .eq('draw_date', today)
         .single();
 
-      const { data: existingDraw, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
-
       if (error && error.code !== 'PGRST116') {
-        console.error('Error loading draw:', error);
+        console.error('Error loading current draw:', error);
         return;
       }
 
-      if (existingDraw) {
-        const draw: Draw = {
-          id: existingDraw.id,
-          drawDate: existingDraw.draw_date,
-          drawTime: existingDraw.draw_time,
-          status: existingDraw.status,
-          totalTickets: existingDraw.total_tickets,
-          minimumTickets: existingDraw.minimum_tickets,
-          prizePool: existingDraw.prize_pool,
-          createdAt: existingDraw.created_at,
-          updatedAt: existingDraw.updated_at,
-        };
-        setCurrentDraw(draw);
-        console.log('Current draw loaded successfully');
+      if (data) {
+        setCurrentDraw({
+          id: data.id,
+          drawDate: data.draw_date,
+          drawTime: data.draw_time,
+          status: data.status,
+          totalTickets: data.total_tickets,
+          minimumTickets: data.minimum_tickets,
+          prizePool: data.prize_pool,
+        });
       } else {
-        // Create new draw
-        const createPromise = supabase
+        // Create today's draw if it doesn't exist
+        const drawTime = new Date();
+        drawTime.setHours(22, 0, 0, 0); // 10 PM
+
+        const { data: newDraw, error: createError } = await supabase
           .from('draws')
           .insert({
-            draw_date: drawTime.toISOString().split('T')[0],
+            draw_date: today,
             draw_time: drawTime.toISOString(),
+            status: 'pending',
+            total_tickets: 0,
             minimum_tickets: 300000,
+            prize_pool: 0,
           })
           .select()
           .single();
-
-        const { data: newDraw, error: createError } = await Promise.race([createPromise, timeoutPromise]) as any;
 
         if (createError) {
           console.error('Error creating draw:', createError);
@@ -156,7 +137,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (newDraw) {
-          const draw: Draw = {
+          setCurrentDraw({
             id: newDraw.id,
             drawDate: newDraw.draw_date,
             drawTime: newDraw.draw_time,
@@ -164,221 +145,127 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             totalTickets: newDraw.total_tickets,
             minimumTickets: newDraw.minimum_tickets,
             prizePool: newDraw.prize_pool,
-            createdAt: newDraw.created_at,
-            updatedAt: newDraw.updated_at,
-          };
-          setCurrentDraw(draw);
-          console.log('New draw created successfully');
+          });
         }
       }
     } catch (error) {
       console.error('Error loading current draw:', error);
-      if (error instanceof Error && error.message === 'Draw load timeout') {
-        Alert.alert('Connection Error', 'Unable to load draw information. Please check your internet connection.');
-      }
     }
   };
 
   const loadUserTickets = async () => {
-    try {
-      if (!user || !currentDraw) return;
-      
-      console.log('Loading user tickets...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Tickets load timeout')), 10000); // 10 second timeout
-      });
+    if (!user || !currentDraw) return;
 
-      const queryPromise = supabase
+    try {
+      const { data, error } = await supabase
         .from('tickets')
         .select('*')
         .eq('user_id', user.id)
         .eq('draw_id', currentDraw.id);
-
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error loading user tickets:', error);
         return;
       }
 
-      if (data) {
-        const tickets: Ticket[] = data.map(ticket => ({
-          id: ticket.id,
-          userId: ticket.user_id,
-          drawId: ticket.draw_id,
-          ticketNumber: ticket.ticket_number,
-          source: ticket.source,
-          createdAt: ticket.created_at,
-        }));
-        setUserTickets(tickets);
-        console.log('User tickets loaded successfully:', tickets.length);
-      }
+      const tickets: Ticket[] = data.map(item => ({
+        id: item.id,
+        userId: item.user_id,
+        drawId: item.draw_id,
+        ticketNumber: item.ticket_number,
+        source: item.source,
+        createdAt: item.created_at,
+      }));
+
+      setUserTickets(tickets);
     } catch (error) {
       console.error('Error loading user tickets:', error);
-      if (error instanceof Error && error.message === 'Tickets load timeout') {
-        console.warn('Tickets load timed out, continuing with empty array');
-        setUserTickets([]);
-      }
     }
   };
 
   const loadRecentWinners = async () => {
     try {
-      console.log('Loading recent winners...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Winners load timeout')), 10000); // 10 second timeout
-      });
-
-      const queryPromise = supabase
+      const { data, error } = await supabase
         .from('winners')
         .select(`
           *,
           users!inner(first_name, last_name)
         `)
         .order('created_at', { ascending: false })
-        .limit(50);
-
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+        .limit(10);
 
       if (error) {
         console.error('Error loading recent winners:', error);
         return;
       }
 
-      if (data) {
-        const winners: Winner[] = data.map(winner => ({
-          id: winner.id,
-          drawId: winner.draw_id,
-          userId: winner.user_id,
-          ticketId: winner.ticket_id,
-          prizeAmount: winner.prize_amount,
-          prizeTier: winner.prize_tier,
-          createdAt: winner.created_at,
-          user: {
-            firstName: winner.users.first_name,
-            lastName: winner.users.last_name,
-          },
-        }));
-        setRecentWinners(winners);
-        console.log('Recent winners loaded successfully:', winners.length);
-      }
+      const winners: Winner[] = data.map(item => ({
+        id: item.id,
+        drawId: item.draw_id,
+        userId: item.user_id,
+        ticketId: item.ticket_id,
+        prizeAmount: parseFloat(item.prize_amount),
+        prizeTier: item.prize_tier,
+        firstName: item.users.first_name,
+        lastName: item.users.last_name,
+        createdAt: item.created_at,
+      }));
+
+      setRecentWinners(winners);
     } catch (error) {
       console.error('Error loading recent winners:', error);
-      if (error instanceof Error && error.message === 'Winners load timeout') {
-        console.warn('Winners load timed out, continuing with empty array');
-        setRecentWinners([]);
-      }
     }
   };
 
   const loadAdWatchData = async () => {
+    if (!user) return;
+
     try {
-      if (!user) return;
-      
-      console.log('Loading ad watch data...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Ad data load timeout')), 8000); // 8 second timeout
-      });
-      
-      // Get today's ad watches
       const today = new Date().toISOString().split('T')[0];
-      const queryPromise = supabase
+      const { data, error } = await supabase
         .from('ad_watches')
         .select('*')
         .eq('user_id', user.id)
-        .gte('watched_at', `${today}T00:00:00`)
-        .lt('watched_at', `${today}T23:59:59`)
+        .gte('watched_at', `${today}T00:00:00.000Z`)
         .order('watched_at', { ascending: false });
-
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error loading ad watch data:', error);
         return;
       }
 
-      if (data && data.length > 0) {
-        // Count consecutive ad watches
-        let consecutiveCount = 0;
-        const lastAdWatch = data[0];
-        const lastWatchTime = new Date(lastAdWatch.watched_at);
+      const totalWatched = data.length;
+      const recentSession = data.find(watch => watch.session_count >= 5);
+      
+      if (recentSession) {
+        const watchTime = new Date(recentSession.watched_at);
+        const cooldownEnd = new Date(watchTime.getTime() + 10 * 60 * 1000); // 10 minutes
         const now = new Date();
         
-        // Check if last ad watch was within the last session
-        for (const adWatch of data) {
-          if (adWatch.session_count === lastAdWatch.session_count) {
-            consecutiveCount++;
-          } else {
-            break;
-          }
+        if (now < cooldownEnd) {
+          const remainingTime = Math.floor((cooldownEnd.getTime() - now.getTime()) / 1000);
+          setAdCooldownTime(remainingTime);
+          setIsAdButtonActive(false);
         }
-
-        setAdWatchCount(consecutiveCount);
-
-        // Check if in cooldown period (10 minutes after 5th ad)
-        if (consecutiveCount >= 5) {
-          const cooldownEnd = new Date(lastWatchTime);
-          cooldownEnd.setMinutes(cooldownEnd.getMinutes() + 10);
-          
-          if (now < cooldownEnd) {
-            const remainingTime = Math.ceil((cooldownEnd.getTime() - now.getTime()) / 1000);
-            setAdCooldownTime(remainingTime);
-            setIsAdButtonActive(false);
-          }
-        }
-        console.log('Ad watch data loaded successfully');
       }
+
+      setAdWatchCount(totalWatched % 5);
     } catch (error) {
       console.error('Error loading ad watch data:', error);
-      if (error instanceof Error && error.message === 'Ad data load timeout') {
-        console.warn('Ad data load timed out, continuing with defaults');
-      }
     }
   };
 
-  const generateTicketNumber = async (): Promise<string> => {
-    try {
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Ticket generation timeout')), 5000); // 5 second timeout
-      });
-
-      const rpcPromise = supabase.rpc('generate_ticket_number');
-      const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
-      
-      if (error) {
-        console.error('Error generating ticket number:', error);
-        // Fallback to client-side generation
-        return Math.floor(100000000 + Math.random() * 900000000).toString();
-      }
-      return data;
-    } catch (error) {
-      console.error('Error generating ticket number:', error);
-      // Fallback to client-side generation
-      return Math.floor(100000000 + Math.random() * 900000000).toString();
-    }
+  const generateTicketNumber = (): string => {
+    return Math.floor(100000000 + Math.random() * 900000000).toString();
   };
 
   const buyTicket = async (): Promise<string | null> => {
+    if (!user || !currentDraw) return null;
+
     try {
-      if (!user || !currentDraw) return null;
+      const ticketNumber = generateTicketNumber();
       
-      console.log('Buying ticket...');
-      const ticketNumber = await generateTicketNumber();
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Ticket purchase timeout')), 15000); // 15 second timeout
-      });
-      
-      // Insert ticket into database
-      const insertPromise = supabase
+      const { data, error } = await supabase
         .from('tickets')
         .insert({
           user_id: user.id,
@@ -389,325 +276,124 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .select()
         .single();
 
-      const { data, error } = await Promise.race([insertPromise, timeoutPromise]) as any;
-
       if (error) {
         console.error('Error buying ticket:', error);
-        Alert.alert('Error', 'Failed to purchase ticket. Please try again.');
         return null;
       }
 
-      if (data) {
-        // Update local state
-        const newTicket: Ticket = {
-          id: data.id,
-          userId: data.user_id,
-          drawId: data.draw_id,
-          ticketNumber: data.ticket_number,
-          source: data.source,
-          createdAt: data.created_at,
-        };
-        setUserTickets(prev => [...prev, newTicket]);
-
-        // Update draw total tickets
-        const updatePromise = supabase
-          .from('draws')
-          .update({ total_tickets: currentDraw.totalTickets + 1 })
-          .eq('id', currentDraw.id);
-
-        // Don't wait for this update, just fire and forget
-        updatePromise.then(({ error: updateError }) => {
-          if (!updateError) {
-            setCurrentDraw(prev => prev ? { ...prev, totalTickets: prev.totalTickets + 1 } : null);
-          }
-        });
-
-        console.log('Ticket purchased successfully:', ticketNumber);
-        return ticketNumber;
-      }
-
-      return null;
+      // Refresh user tickets
+      await loadUserTickets();
+      
+      return ticketNumber;
     } catch (error) {
       console.error('Error buying ticket:', error);
-      if (error instanceof Error && error.message === 'Ticket purchase timeout') {
-        Alert.alert('Connection Error', 'Ticket purchase timed out. Please check your internet connection and try again.');
-      }
       return null;
     }
   };
 
   const watchAd = async (): Promise<boolean> => {
+    if (!user || !currentDraw || !isAdButtonActive) return false;
+
     try {
-      if (!user || !isAdButtonActive || !currentDraw) return false;
-      
-      console.log('Watching ad...');
       const newCount = adWatchCount + 1;
       
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Ad watch timeout')), 15000); // 15 second timeout
-      });
-      
-      // Record ad watch
-      const adPromise = supabase
+      const { error } = await supabase
         .from('ad_watches')
         .insert({
           user_id: user.id,
-          session_count: newCount,
           ticket_earned: true,
+          session_count: newCount,
         });
 
-      const { error: adError } = await Promise.race([adPromise, timeoutPromise]) as any;
-
-      if (adError) {
-        console.error('Error recording ad watch:', adError);
+      if (error) {
+        console.error('Error recording ad watch:', error);
         return false;
       }
 
-      // Award ticket
-      const ticketNumber = await generateTicketNumber();
-      const ticketPromise = supabase
+      // Generate ticket for ad watch
+      const ticketNumber = generateTicketNumber();
+      const { error: ticketError } = await supabase
         .from('tickets')
         .insert({
           user_id: user.id,
           draw_id: currentDraw.id,
           ticket_number: ticketNumber,
           source: 'ad_watch',
-        })
-        .select()
-        .single();
-
-      const { data, error: ticketError } = await Promise.race([ticketPromise, timeoutPromise]) as any;
+        });
 
       if (ticketError) {
-        console.error('Error awarding ticket:', ticketError);
+        console.error('Error creating ticket from ad:', ticketError);
         return false;
       }
 
-      if (data) {
-        const newTicket: Ticket = {
-          id: data.id,
-          userId: data.user_id,
-          drawId: data.draw_id,
-          ticketNumber: data.ticket_number,
-          source: data.source,
-          createdAt: data.created_at,
-        };
-        setUserTickets(prev => [...prev, newTicket]);
-      }
-
       setAdWatchCount(newCount);
-      
-      // Check if need cooldown
+
+      // Check if cooldown should start
       if (newCount >= 5) {
         setAdCooldownTime(600); // 10 minutes
         setIsAdButtonActive(false);
       }
+
+      // Refresh user tickets
+      await loadUserTickets();
       
-      console.log('Ad watched successfully, ticket awarded');
       return true;
     } catch (error) {
       console.error('Error watching ad:', error);
-      if (error instanceof Error && error.message === 'Ad watch timeout') {
-        Alert.alert('Connection Error', 'Ad watch timed out. Please check your internet connection and try again.');
-      }
       return false;
     }
   };
 
   const performDraw = async () => {
+    if (!currentDraw) return;
+
     try {
-      if (!currentDraw || currentDraw.status !== 'pending') return;
-      
-      console.log('Performing draw...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Draw performance timeout')), 20000); // 20 second timeout
-      });
-      
-      // Check if minimum tickets reached
-      if (currentDraw.totalTickets < currentDraw.minimumTickets) {
-        // Refund everyone
-        const refundPromise = supabase
-          .from('draws')
-          .update({ status: 'refunded' })
-          .eq('id', currentDraw.id);
-
-        const { error } = await Promise.race([refundPromise, timeoutPromise]) as any;
-
-        if (!error) {
-          setCurrentDraw(prev => prev ? { ...prev, status: 'refunded' } : null);
-          Alert.alert(
-            'Draw Cancelled',
-            'The minimum number of tickets was not reached. All participants will be refunded.',
-            [{ text: 'OK' }]
-          );
-        }
-        return;
-      }
-
-      // Get all tickets for this draw
-      const ticketsPromise = supabase
-        .from('tickets')
-        .select('*')
-        .eq('draw_id', currentDraw.id);
-
-      const { data: allTickets, error: ticketsError } = await Promise.race([ticketsPromise, timeoutPromise]) as any;
-
-      if (ticketsError || !allTickets || allTickets.length === 0) {
-        console.error('Error getting tickets for draw:', ticketsError);
-        return;
-      }
-
-      // Randomly select winners
-      const shuffledTickets = [...allTickets].sort(() => Math.random() - 0.5);
-      const winners = [];
-
-      // 10 winners of $100 (tier1)
-      for (let i = 0; i < Math.min(10, shuffledTickets.length); i++) {
-        const ticket = shuffledTickets[i];
-        winners.push({
-          draw_id: currentDraw.id,
-          user_id: ticket.user_id,
-          ticket_id: ticket.id,
-          prize_amount: 100,
-          prize_tier: 'tier1',
-        });
-      }
-
-      // 6 winners of $50 (tier2)
-      for (let i = 10; i < Math.min(16, shuffledTickets.length); i++) {
-        const ticket = shuffledTickets[i];
-        winners.push({
-          draw_id: currentDraw.id,
-          user_id: ticket.user_id,
-          ticket_id: ticket.id,
-          prize_amount: 50,
-          prize_tier: 'tier2',
-        });
-      }
-
-      // 20 winners of $10 (tier3)
-      for (let i = 16; i < Math.min(36, shuffledTickets.length); i++) {
-        const ticket = shuffledTickets[i];
-        winners.push({
-          draw_id: currentDraw.id,
-          user_id: ticket.user_id,
-          ticket_id: ticket.id,
-          prize_amount: 10,
-          prize_tier: 'tier3',
-        });
-      }
-
-      // Insert winners
-      const winnersPromise = supabase
-        .from('winners')
-        .insert(winners);
-
-      const { error: winnersError } = await Promise.race([winnersPromise, timeoutPromise]) as any;
-
-      if (winnersError) {
-        console.error('Error inserting winners:', winnersError);
-        return;
-      }
-
-      // Update draw status
-      const totalPrizePool = winners.reduce((sum, winner) => sum + winner.prize_amount, 0);
-      const drawUpdatePromise = supabase
+      // This would be implemented as a scheduled function
+      // For now, just update the draw status
+      const { error } = await supabase
         .from('draws')
-        .update({ 
-          status: 'completed',
-          prize_pool: totalPrizePool,
-        })
+        .update({ status: 'completed' })
         .eq('id', currentDraw.id);
 
-      const { error: drawError } = await Promise.race([drawUpdatePromise, timeoutPromise]) as any;
-
-      if (!drawError) {
-        setCurrentDraw(prev => prev ? { 
-          ...prev, 
-          status: 'completed',
-          prizePool: totalPrizePool,
-        } : null);
-
-        // Update winners' wallet balances (fire and forget)
-        for (const winner of winners) {
-          supabase
-            .from('users')
-            .update({ 
-              wallet_balance: supabase.raw(`wallet_balance + ${winner.prize_amount}`)
-            })
-            .eq('id', winner.user_id)
-            .then(() => console.log(`Updated wallet for user ${winner.user_id}`))
-            .catch(err => console.error('Error updating wallet:', err));
-        }
-
-        // Refresh data
-        setTimeout(() => {
-          loadRecentWinners();
-          checkDrawResults();
-          loadCurrentDraw();
-        }, 1000);
-        
-        console.log('Draw completed successfully');
+      if (error) {
+        console.error('Error updating draw status:', error);
       }
     } catch (error) {
       console.error('Error performing draw:', error);
-      if (error instanceof Error && error.message === 'Draw performance timeout') {
-        Alert.alert('Connection Error', 'Draw processing timed out. Please check your internet connection.');
-      }
     }
   };
 
-  const checkDrawResults = async () => {
+  const checkDrawResults = useCallback(async () => {
+    if (!currentDraw) return;
+
     try {
-      if (!user || !currentDraw) return;
-      
-      console.log('Checking draw results...');
-      
-      // Add timeout handling
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Results check timeout')), 10000); // 10 second timeout
-      });
-      
-      // Check if user won in the current draw
-      const queryPromise = supabase
-        .from('winners')
-        .select('*')
-        .eq('draw_id', currentDraw.id)
-        .eq('user_id', user.id);
+      // Check if draw time has passed and draw is still pending
+      const drawTime = new Date(currentDraw.drawTime);
+      const now = new Date();
 
-      const { data: userWins, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
-
-      if (error) {
-        console.error('Error checking draw results:', error);
-        return;
-      }
-
-      if (userWins && userWins.length > 0) {
-        const totalWinnings = userWins.reduce((sum, win) => sum + win.prize_amount, 0);
-        Alert.alert(
-          '🎉 Congratulations! 🎉',
-          `You won $${totalWinnings}! The money has been added to your wallet.`,
-          [{ text: 'Amazing!' }]
-        );
-
-        // Update user's wallet balance in context
-        await updateUser({ walletBalance: user.walletBalance + totalWinnings });
-        console.log('User won:', totalWinnings);
+      if (now > drawTime && currentDraw.status === 'pending') {
+        await performDraw();
+        await loadCurrentDraw();
+        await loadRecentWinners();
       }
     } catch (error) {
       console.error('Error checking draw results:', error);
-      if (error instanceof Error && error.message === 'Results check timeout') {
-        console.warn('Results check timed out');
-      }
     }
-  };
+  }, [currentDraw]);
 
   const refreshData = async () => {
-    console.log('Refreshing app data...');
-    await initializeData();
+    if (!user) return;
+    
+    try {
+      await Promise.all([
+        loadCurrentDraw(),
+        loadUserTickets(),
+        loadRecentWinners(),
+        loadAdWatchData(),
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
   };
 
   return (

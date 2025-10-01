@@ -1,5 +1,9 @@
 
+import { router } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { colors, commonStyles } from '@/styles/commonStyles';
 import {
   View,
   Text,
@@ -9,12 +13,8 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import { useAuth } from '@/contexts/AuthContext';
-import { useApp } from '@/contexts/AppContext';
-import { colors, commonStyles } from '@/styles/commonStyles';
 import { Button } from '@/components/button';
-import { IconSymbol } from '@/components/IconSymbol';
-import { router } from 'expo-router';
+import { useApp } from '@/contexts/AppContext';
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -29,19 +29,24 @@ export default function HomeScreen() {
   } = useApp();
   const [refreshing, setRefreshing] = useState(false);
 
-  const checkDrawResultsCallback = useCallback(checkDrawResults, [checkDrawResults]);
-
+  // Redirect to welcome if not authenticated
   useEffect(() => {
     if (!user) {
-      router.replace('/auth/login');
+      router.replace('/welcome');
     }
   }, [user]);
 
+  const checkDrawResultsCallback = useCallback(() => {
+    checkDrawResults();
+  }, [checkDrawResults]);
+
   useEffect(() => {
-    checkDrawResultsCallback();
+    if (currentDraw) {
+      checkDrawResultsCallback();
+    }
   }, [currentDraw, checkDrawResultsCallback]);
 
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
@@ -49,20 +54,15 @@ export default function HomeScreen() {
   };
 
   const handleBuyTicket = async () => {
-    if (!currentDraw || currentDraw.status !== 'pending') {
-      Alert.alert('Error', 'No active draw available');
-      return;
-    }
-
     const ticketNumber = await buyTicket();
     if (ticketNumber) {
       Alert.alert(
         'Ticket Purchased!',
-        `Your ticket number is: ${ticketNumber}\n\nGood luck in today's draw!`,
+        `Your ticket number is: ${ticketNumber}`,
         [{ text: 'OK' }]
       );
     } else {
-      Alert.alert('Error', 'Failed to purchase ticket');
+      Alert.alert('Error', 'Failed to purchase ticket. Please try again.');
     }
   };
 
@@ -73,7 +73,7 @@ export default function HomeScreen() {
   };
 
   if (!user) {
-    return null;
+    return null; // Will redirect in useEffect
   }
 
   return (
@@ -86,325 +86,290 @@ export default function HomeScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.userName}>{user.firstName}!</Text>
+        <Text style={styles.welcomeText}>Welcome back, {user.firstName}!</Text>
+        <Text style={styles.balanceText}>
+          Wallet Balance: ${user.walletBalance?.toFixed(2) || '0.00'}
+        </Text>
       </View>
 
-      {/* Countdown Card */}
-      <View style={[commonStyles.card, styles.countdownCard]}>
-        <Text style={styles.cardTitle}>Next Draw</Text>
-        <Text style={styles.drawTime}>Today at 10:00 PM ET</Text>
-        
-        <View style={styles.countdownContainer}>
-          <Text style={styles.countdownLabel}>Time Remaining</Text>
-          <Text style={styles.countdownTime}>
-            {timeUntilDraw > 0 ? formatTime(timeUntilDraw) : '00:00:00'}
-          </Text>
-        </View>
-
-        {currentDraw && (
-          <View style={styles.drawInfo}>
-            <View style={styles.drawInfoItem}>
-              <Text style={styles.drawInfoLabel}>Total Tickets</Text>
-              <Text style={styles.drawInfoValue}>
-                {currentDraw.totalTickets.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.drawInfoItem}>
-              <Text style={styles.drawInfoLabel}>Your Tickets</Text>
-              <Text style={styles.drawInfoValue}>{userTickets.length}</Text>
-            </View>
-          </View>
-        )}
+      {/* Countdown Timer */}
+      <View style={styles.countdownCard}>
+        <Text style={styles.countdownTitle}>Next Draw In</Text>
+        <Text style={styles.countdownTime}>{formatTime(timeUntilDraw)}</Text>
+        <Text style={styles.countdownSubtitle}>Daily draw at 10:00 PM ET</Text>
       </View>
 
       {/* Prize Information */}
-      <View style={[commonStyles.card, styles.prizeCard]}>
-        <Text style={styles.cardTitle}>Today&apos;s Prizes</Text>
-        <Text style={styles.prizeNote}>
-          Prize amounts and winner count will increase as more members participate
-        </Text>
-        
-        <View style={styles.prizeList}>
+      <View style={styles.prizeCard}>
+        <Text style={styles.prizeTitle}>Today&apos;s Prizes</Text>
+        <View style={styles.prizeGrid}>
           <View style={styles.prizeItem}>
-            <View style={[styles.prizeIcon, { backgroundColor: '#FFD700' }]}>
-              <Text style={styles.prizeIconText}>🏆</Text>
-            </View>
-            <View style={styles.prizeDetails}>
-              <Text style={styles.prizeAmount}>$100</Text>
-              <Text style={styles.prizeCount}>10 winners</Text>
-            </View>
+            <Text style={styles.prizeAmount}>$100</Text>
+            <Text style={styles.prizeCount}>10 winners</Text>
           </View>
-          
           <View style={styles.prizeItem}>
-            <View style={[styles.prizeIcon, { backgroundColor: '#C0C0C0' }]}>
-              <Text style={styles.prizeIconText}>🥈</Text>
-            </View>
-            <View style={styles.prizeDetails}>
-              <Text style={styles.prizeAmount}>$50</Text>
-              <Text style={styles.prizeCount}>6 winners</Text>
-            </View>
+            <Text style={styles.prizeAmount}>$50</Text>
+            <Text style={styles.prizeCount}>6 winners</Text>
           </View>
-          
           <View style={styles.prizeItem}>
-            <View style={[styles.prizeIcon, { backgroundColor: '#CD7F32' }]}>
-              <Text style={styles.prizeIconText}>🥉</Text>
-            </View>
-            <View style={styles.prizeDetails}>
-              <Text style={styles.prizeAmount}>$10</Text>
-              <Text style={styles.prizeCount}>20 winners</Text>
-            </View>
+            <Text style={styles.prizeAmount}>$10</Text>
+            <Text style={styles.prizeCount}>20 winners</Text>
           </View>
         </View>
+        <Text style={styles.prizeNote}>
+          Prizes increase as more members participate!
+        </Text>
       </View>
 
-      {/* Ticket Purchase */}
-      <View style={[commonStyles.card, styles.ticketCard]}>
-        <Text style={styles.cardTitle}>Get Your Tickets</Text>
-        <Text style={styles.ticketBalance}>
-          Your Tickets: {userTickets.length}
-        </Text>
-        
-        <Button
-          onPress={handleBuyTicket}
-          style={styles.buyTicketButton}
-          disabled={!currentDraw || currentDraw.status !== 'pending'}
-        >
-          <Text style={styles.buyTicketText}>
-            {currentDraw?.status === 'pending' ? 'Buy Ticket' : 'Draw Not Active'}
+      {/* User Tickets */}
+      <View style={styles.ticketsCard}>
+        <View style={styles.ticketsHeader}>
+          <Text style={styles.ticketsTitle}>Your Tickets</Text>
+          <Text style={styles.ticketsCount}>{userTickets.length}</Text>
+        </View>
+        {userTickets.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {userTickets.map((ticket) => (
+              <View key={ticket.id} style={styles.ticketItem}>
+                <Text style={styles.ticketNumber}>{ticket.ticketNumber}</Text>
+                <Text style={styles.ticketSource}>{ticket.source}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={styles.noTicketsText}>
+            No tickets yet. Buy a ticket or watch ads to participate!
           </Text>
-        </Button>
-        
-        <TouchableOpacity
-          style={styles.earnTicketsButton}
-          onPress={() => router.push('/(tabs)/wallet')}
-        >
-          <IconSymbol name="plus.circle" size={20} color={colors.primary} />
-          <Text style={styles.earnTicketsText}>Earn More Tickets</Text>
-        </TouchableOpacity>
+        )}
       </View>
+
+      {/* Buy Ticket Button */}
+      <Button onPress={handleBuyTicket} style={styles.buyButton}>
+        <IconSymbol name="ticket.fill" size={20} color="white" />
+        <Text style={styles.buyButtonText}>Buy Ticket - $1.00</Text>
+      </Button>
 
       {/* Recent Winners */}
       {recentWinners.length > 0 && (
-        <View style={[commonStyles.card, styles.winnersCard]}>
-          <Text style={styles.cardTitle}>Recent Winners</Text>
-          {recentWinners.slice(0, 5).map((winner, index) => (
+        <View style={styles.winnersCard}>
+          <Text style={styles.winnersTitle}>Recent Winners</Text>
+          {recentWinners.slice(0, 5).map((winner) => (
             <View key={winner.id} style={styles.winnerItem}>
-              <View style={styles.winnerInfo}>
-                <Text style={styles.winnerName}>
-                  {winner.user?.firstName} {winner.user?.lastName}
-                </Text>
-                <Text style={styles.winnerTicket}>Ticket #{winner.ticketId}</Text>
-              </View>
-              <Text style={styles.winnerAmount}>${winner.prizeAmount}</Text>
+              <Text style={styles.winnerName}>
+                {winner.firstName} {winner.lastName?.charAt(0)}.
+              </Text>
+              <Text style={styles.winnerPrize}>${winner.prizeAmount}</Text>
             </View>
           ))}
         </View>
       )}
 
-      {/* Draw Status */}
-      {currentDraw?.status === 'refunded' && (
-        <View style={[commonStyles.card, styles.refundCard]}>
-          <IconSymbol name="exclamationmark.triangle" size={24} color={colors.warning} />
-          <Text style={styles.refundTitle}>Draw Cancelled</Text>
-          <Text style={styles.refundMessage}>
-            The number of tickets in the draw did not meet the minimum requirement of 300,000. 
-            All participants have been refunded. We apologize for any inconvenience.
-          </Text>
-        </View>
-      )}
+      {/* Quick Actions */}
+      <View style={styles.actionsCard}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push('/(tabs)/wallet')}
+        >
+          <IconSymbol name="tv.fill" size={24} color={colors.primary} />
+          <Text style={styles.actionText}>Watch Ads</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push('/(tabs)/referrals')}
+        >
+          <IconSymbol name="person.2.fill" size={24} color={colors.primary} />
+          <Text style={styles.actionText}>Refer Friends</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   header: {
     marginBottom: 24,
-    paddingTop: 20,
   },
   welcomeText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  userName: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  countdownCard: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  cardTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 8,
   },
-  drawTime: {
+  balanceText: {
     fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: 20,
+    fontWeight: '500',
   },
-  countdownContainer: {
+  countdownCard: {
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
     marginBottom: 20,
   },
-  countdownLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  countdownTitle: {
+    fontSize: 16,
+    color: 'white',
+    fontWeight: '600',
     marginBottom: 8,
   },
   countdownTime: {
     fontSize: 36,
+    color: 'white',
     fontWeight: '800',
-    color: colors.primary,
-    fontFamily: 'monospace',
+    marginBottom: 8,
   },
-  drawInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  drawInfoItem: {
-    alignItems: 'center',
-  },
-  drawInfoLabel: {
+  countdownSubtitle: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  drawInfoValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
+    color: 'rgba(255,255,255,0.8)',
   },
   prizeCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
+  },
+  prizeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  prizeGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  prizeItem: {
+    alignItems: 'center',
+  },
+  prizeAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  prizeCount: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   prizeNote: {
     fontSize: 12,
     color: colors.textSecondary,
-    fontStyle: 'italic',
-    marginBottom: 16,
     textAlign: 'center',
+    fontStyle: 'italic',
   },
-  prizeList: {
-    gap: 12,
+  ticketsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
   },
-  prizeItem: {
+  ticketsHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
+    marginBottom: 12,
   },
-  prizeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  prizeIconText: {
-    fontSize: 20,
-  },
-  prizeDetails: {
-    flex: 1,
-  },
-  prizeAmount: {
+  ticketsTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
   },
-  prizeCount: {
+  ticketsCount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  ticketItem: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  ticketNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  ticketSource: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  noTicketsText: {
     fontSize: 14,
     color: colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
-  ticketCard: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  ticketBalance: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 16,
-  },
-  buyTicketButton: {
+  buyButton: {
     backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 16,
-    paddingHorizontal: 32,
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
-  buyTicketText: {
+  buyButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
-  },
-  earnTicketsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  earnTicketsText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '500',
+    marginLeft: 8,
   },
   winnersCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
+  },
+  winnersTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
   },
   winnerItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  winnerInfo: {
+  winnerName: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  winnerPrize: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  actionsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
+  },
+  actionButton: {
+    alignItems: 'center',
     flex: 1,
   },
-  winnerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  winnerTicket: {
+  actionText: {
     fontSize: 14,
-    color: colors.textSecondary,
-  },
-  winnerAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.success,
-  },
-  refundCard: {
-    alignItems: 'center',
-    backgroundColor: '#FFF3CD',
-    borderColor: colors.warning,
-    marginBottom: 20,
-  },
-  refundTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.warning,
+    color: colors.text,
+    fontWeight: '500',
     marginTop: 8,
-    marginBottom: 8,
-  },
-  refundMessage: {
-    fontSize: 14,
-    color: colors.text,
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });

@@ -1,5 +1,11 @@
 
+import { IconSymbol } from '@/components/IconSymbol';
+import { supabase } from '@/app/integrations/supabase/client';
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Referral } from '@/types';
+import { colors, commonStyles } from '@/styles/commonStyles';
+import * as Clipboard from 'expo-clipboard';
 import {
   View,
   Text,
@@ -9,32 +15,20 @@ import {
   Alert,
   Share,
 } from 'react-native';
-import { useAuth } from '@/contexts/AuthContext';
-import { colors, commonStyles } from '@/styles/commonStyles';
 import { Button } from '@/components/button';
-import { IconSymbol } from '@/components/IconSymbol';
-import * as Clipboard from 'expo-clipboard';
-import { Referral } from '@/types';
-import { supabase } from '@/app/integrations/supabase/client';
 
 export default function ReferralsScreen() {
   const { user } = useAuth();
   const [referrals, setReferrals] = useState<Referral[]>([]);
-  const [totalEarned, setTotalEarned] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const loadReferrals = useCallback(async () => {
+    if (!user) return;
+
     try {
-      if (!user) return;
-      
       const { data, error } = await supabase
         .from('users')
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email,
-          created_at
-        `)
+        .select('id, first_name, last_name, created_at')
         .eq('referred_by', user.referralCode);
 
       if (error) {
@@ -42,24 +36,18 @@ export default function ReferralsScreen() {
         return;
       }
 
-      if (data) {
-        const referralData: Referral[] = data.map(referredUser => ({
-          id: referredUser.id,
-          referrerId: user.id,
-          referredUserId: referredUser.id,
-          ticketEarned: true,
-          createdAt: referredUser.created_at,
-          referredUser: {
-            firstName: referredUser.first_name,
-            lastName: referredUser.last_name,
-            email: referredUser.email,
-          },
-        }));
-        setReferrals(referralData);
-        setTotalEarned(referralData.length);
-      }
+      const referralData: Referral[] = data.map(item => ({
+        id: item.id,
+        firstName: item.first_name,
+        lastName: item.last_name,
+        joinedAt: item.created_at,
+      }));
+
+      setReferrals(referralData);
     } catch (error) {
       console.error('Error loading referrals:', error);
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
@@ -78,9 +66,8 @@ export default function ReferralsScreen() {
 
   const shareReferralLink = async () => {
     if (!user?.referralCode) return;
-    
-    const shareUrl = `https://fundeecash.com/signup?ref=${user.referralCode}`;
-    const message = `Join me on Fundee Cash and earn money through daily draws! Use my referral code: ${user.referralCode}\n\n${shareUrl}`;
+
+    const message = `Join me on Fundee Cash and win daily prizes! Use my referral code: ${user.referralCode}`;
     
     try {
       await Share.share({
@@ -88,7 +75,7 @@ export default function ReferralsScreen() {
         title: 'Join Fundee Cash',
       });
     } catch (error) {
-      console.log('Error sharing:', error);
+      console.error('Error sharing:', error);
     }
   };
 
@@ -101,120 +88,93 @@ export default function ReferralsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Referrals</Text>
-        <Text style={styles.subtitle}>Invite friends and earn tickets</Text>
+        <Text style={styles.subtitle}>
+          Earn 1 ticket for each friend you refer!
+        </Text>
       </View>
 
-      {/* Referral Stats */}
-      <View style={[commonStyles.card, styles.statsCard]}>
+      {/* Referral Code Card */}
+      <View style={styles.codeCard}>
+        <Text style={styles.codeTitle}>Your Referral Code</Text>
+        <View style={styles.codeContainer}>
+          <Text style={styles.codeText}>{user.referralCode}</Text>
+          <TouchableOpacity onPress={copyReferralCode} style={styles.copyButton}>
+            <IconSymbol name="doc.on.doc" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <Button onPress={shareReferralLink} style={styles.shareButton}>
+          <IconSymbol name="square.and.arrow.up" size={16} color="white" />
+          <Text style={styles.shareButtonText}>Share Referral Link</Text>
+        </Button>
+      </View>
+
+      {/* Stats Card */}
+      <View style={styles.statsCard}>
         <View style={styles.statItem}>
           <Text style={styles.statNumber}>{referrals.length}</Text>
           <Text style={styles.statLabel}>Total Referrals</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>{totalEarned}</Text>
+          <Text style={styles.statNumber}>{referrals.length}</Text>
           <Text style={styles.statLabel}>Tickets Earned</Text>
         </View>
       </View>
 
-      {/* Referral Code */}
-      <View style={[commonStyles.card, styles.codeCard]}>
-        <Text style={styles.cardTitle}>Your Referral Code</Text>
-        <View style={styles.codeContainer}>
-          <Text style={styles.referralCode}>{user.referralCode}</Text>
-          <TouchableOpacity style={styles.copyButton} onPress={copyReferralCode}>
-            <IconSymbol name="doc.on.doc" size={20} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.codeDescription}>
-          Share this code with friends. When they sign up, you both get 1 ticket!
-        </Text>
-      </View>
-
-      {/* Share Options */}
-      <View style={[commonStyles.card, styles.shareCard]}>
-        <Text style={styles.cardTitle}>Share & Earn</Text>
-        <Text style={styles.shareDescription}>
-          Invite friends to join Fundee Cash and earn 1 ticket for each successful referral.
-        </Text>
-        
-        <Button onPress={shareReferralLink} style={styles.shareButton}>
-          <IconSymbol name="square.and.arrow.up" size={20} color="white" />
-          <Text style={styles.shareButtonText}>Share Referral Link</Text>
-        </Button>
-      </View>
-
-      {/* How It Works */}
-      <View style={[commonStyles.card, styles.howItWorksCard]}>
-        <Text style={styles.cardTitle}>How Referrals Work</Text>
-        
-        <View style={styles.stepContainer}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>1</Text>
-          </View>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Share Your Code</Text>
-            <Text style={styles.stepDescription}>
-              Send your unique referral code to friends and family
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.stepContainer}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>2</Text>
-          </View>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Friend Signs Up</Text>
-            <Text style={styles.stepDescription}>
-              They create an account using your referral code
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.stepContainer}>
-          <View style={styles.stepNumber}>
-            <Text style={styles.stepNumberText}>3</Text>
-          </View>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Earn Tickets</Text>
-            <Text style={styles.stepDescription}>
-              You both receive 1 ticket for the daily draw
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Referral History */}
-      <View style={[commonStyles.card, styles.historyCard]}>
-        <Text style={styles.cardTitle}>Referral History</Text>
-        
-        {referrals.length > 0 ? (
+      {/* Referrals List */}
+      <View style={styles.referralsCard}>
+        <Text style={styles.referralsTitle}>Your Referrals</Text>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading referrals...</Text>
+        ) : referrals.length > 0 ? (
           referrals.map((referral) => (
             <View key={referral.id} style={styles.referralItem}>
               <View style={styles.referralInfo}>
                 <Text style={styles.referralName}>
-                  {referral.referredUser?.firstName} {referral.referredUser?.lastName}
+                  {referral.firstName} {referral.lastName}
                 </Text>
                 <Text style={styles.referralDate}>
-                  {new Date(referral.createdAt).toLocaleDateString()}
+                  Joined {new Date(referral.joinedAt).toLocaleDateString()}
                 </Text>
               </View>
-              <View style={styles.referralReward}>
-                <IconSymbol name="ticket" size={16} color={colors.success} />
-                <Text style={styles.rewardText}>+1 Ticket</Text>
+              <View style={styles.ticketBadge}>
+                <IconSymbol name="ticket.fill" size={16} color="white" />
+                <Text style={styles.ticketText}>+1</Text>
               </View>
             </View>
           ))
         ) : (
-          <View style={styles.emptyHistory}>
+          <View style={styles.emptyState}>
             <IconSymbol name="person.2" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyHistoryText}>No referrals yet</Text>
-            <Text style={styles.emptyHistorySubtext}>
-              Start sharing your code to earn tickets!
+            <Text style={styles.emptyTitle}>No referrals yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Share your referral code with friends to start earning tickets!
             </Text>
           </View>
         )}
+      </View>
+
+      {/* How it Works */}
+      <View style={styles.howItWorksCard}>
+        <Text style={styles.howItWorksTitle}>How Referrals Work</Text>
+        <View style={styles.stepItem}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>1</Text>
+          </View>
+          <Text style={styles.stepText}>Share your unique referral code</Text>
+        </View>
+        <View style={styles.stepItem}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>2</Text>
+          </View>
+          <Text style={styles.stepText}>Friend signs up using your code</Text>
+        </View>
+        <View style={styles.stepItem}>
+          <View style={styles.stepNumber}>
+            <Text style={styles.stepNumberText}>3</Text>
+          </View>
+          <Text style={styles.stepText}>You both get 1 free ticket!</Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -222,26 +182,73 @@ export default function ReferralsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   header: {
     marginBottom: 24,
-    paddingTop: 20,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
     color: colors.text,
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
     color: colors.textSecondary,
-    marginTop: 4,
   },
-  statsCard: {
+  codeCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  codeTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  codeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    marginBottom: 20,
+  },
+  codeText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 2,
+    marginRight: 12,
+  },
+  copyButton: {
+    padding: 8,
+  },
+  shareButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  shareButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  statsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: 'row',
     marginBottom: 20,
   },
   statItem: {
@@ -252,115 +259,35 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '800',
     color: colors.primary,
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 4,
+    textAlign: 'center',
   },
   statDivider: {
     width: 1,
-    height: 40,
     backgroundColor: colors.border,
+    marginHorizontal: 20,
   },
-  codeCard: {
-    alignItems: 'center',
+  referralsCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
     marginBottom: 20,
   },
-  cardTitle: {
-    fontSize: 20,
+  referralsTitle: {
+    fontSize: 18,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
   },
-  codeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    marginBottom: 12,
-  },
-  referralCode: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 2,
-    marginRight: 12,
-  },
-  copyButton: {
-    padding: 8,
-  },
-  codeDescription: {
+  loadingText: {
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  shareCard: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  shareDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  shareButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  shareButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  howItWorksCard: {
-    marginBottom: 20,
-  },
-  stepContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  stepNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  stepNumberText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  stepDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  historyCard: {
-    marginBottom: 20,
+    fontStyle: 'italic',
   },
   referralItem: {
     flexDirection: 'row',
@@ -377,35 +304,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 4,
   },
   referralDate: {
-    fontSize: 14,
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  referralReward: {
+  ticketBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
-  rewardText: {
+  ticketText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
     fontSize: 14,
-    color: colors.success,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  howItWorksCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 20,
+  },
+  howItWorksTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  stepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  stepNumberText: {
+    color: 'white',
+    fontSize: 12,
     fontWeight: '600',
   },
-  emptyHistory: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  emptyHistoryText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontWeight: '500',
-    marginTop: 12,
-  },
-  emptyHistorySubtext: {
+  stepText: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 4,
+    color: colors.text,
+    flex: 1,
   },
 });

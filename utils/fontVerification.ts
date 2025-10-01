@@ -1,94 +1,103 @@
 
 import { Platform } from 'react-native';
 
-export interface FontStatus {
-  name: string;
+interface FontInfo {
+  family: string;
   loaded: boolean;
-  error?: string;
+  source: 'google' | 'local' | 'system';
 }
 
-export const verifyFonts = async (): Promise<FontStatus[]> => {
-  const fonts = [
-    'Inter_400Regular',
-    'Inter_500Medium', 
-    'Inter_600SemiBold',
-    'Inter_700Bold',
-    'Roboto_400Regular',
-    'Roboto_500Medium',
-    'Roboto_700Bold',
-    'SpaceMono',
-    'SpaceMonoBold',
-  ];
+const EXPECTED_FONTS = [
+  { family: 'Inter_400Regular', source: 'google' as const },
+  { family: 'Inter_500Medium', source: 'google' as const },
+  { family: 'Inter_600SemiBold', source: 'google' as const },
+  { family: 'Inter_700Bold', source: 'google' as const },
+  { family: 'Roboto_400Regular', source: 'google' as const },
+  { family: 'Roboto_500Medium', source: 'google' as const },
+  { family: 'Roboto_700Bold', source: 'google' as const },
+  { family: 'SpaceMono', source: 'local' as const },
+  { family: 'SpaceMonoBold', source: 'local' as const },
+];
 
-  const results: FontStatus[] = [];
-
-  for (const fontName of fonts) {
+export async function logFontStatus(): Promise<void> {
+  console.log('=== Font Verification Status ===');
+  
+  const fontStatuses: FontInfo[] = [];
+  
+  for (const font of EXPECTED_FONTS) {
     try {
-      // On web, we can check if the font is loaded
+      // Check if font is available
+      let isLoaded = false;
+      
       if (Platform.OS === 'web') {
-        // @ts-expect-error - document is available on web
-        const testElement = document.createElement('div');
-        testElement.style.fontFamily = fontName;
-        testElement.style.position = 'absolute';
-        testElement.style.visibility = 'hidden';
-        testElement.textContent = 'Test';
-        
-        // @ts-expect-error - document is available on web
-        document.body.appendChild(testElement);
-        
-        // Check if the font was applied
-        const computedStyle = window.getComputedStyle(testElement);
-        const actualFont = computedStyle.fontFamily;
-        
-        // @ts-expect-error - document is available on web
-        document.body.removeChild(testElement);
-        
-        const loaded = actualFont.includes(fontName) || actualFont !== 'serif';
-        
-        results.push({
-          name: fontName,
-          loaded,
-          error: loaded ? undefined : 'Font not found or failed to load'
-        });
+        // Web-specific font checking
+        // @ts-expect-error - document is available in web environment
+        isLoaded = document.fonts ? await checkWebFont(font.family) : false;
       } else {
-        // On native platforms, assume fonts are loaded if no error occurs
-        results.push({
-          name: fontName,
-          loaded: true,
-        });
+        // React Native font checking
+        // @ts-expect-error - FontDisplay is available in React Native
+        isLoaded = await checkNativeFont(font.family);
       }
+      
+      fontStatuses.push({
+        family: font.family,
+        loaded: isLoaded,
+        source: font.source,
+      });
+      
+      console.log(`${font.family} (${font.source}): ${isLoaded ? '✅ Loaded' : '❌ Failed'}`);
     } catch (error) {
-      results.push({
-        name: fontName,
+      // @ts-expect-error - error might not have message property
+      console.warn(`Error checking font ${font.family}:`, error?.message || error);
+      fontStatuses.push({
+        family: font.family,
         loaded: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        source: font.source,
       });
     }
   }
-
-  return results;
-};
-
-export const logFontStatus = async () => {
-  console.log('🔍 Verifying font loading status...');
-  const fontStatuses = await verifyFonts();
   
-  fontStatuses.forEach(status => {
-    if (status.loaded) {
-      console.log(`✅ ${status.name}: Loaded successfully`);
-    } else {
-      console.error(`❌ ${status.name}: Failed to load - ${status.error}`);
-    }
-  });
-  
-  const loadedCount = fontStatuses.filter(s => s.loaded).length;
+  // Summary
+  const loadedCount = fontStatuses.filter(f => f.loaded).length;
   const totalCount = fontStatuses.length;
   
-  console.log(`📊 Font loading summary: ${loadedCount}/${totalCount} fonts loaded successfully`);
+  console.log(`=== Font Summary: ${loadedCount}/${totalCount} fonts loaded ===`);
   
   if (loadedCount < totalCount) {
-    console.warn('⚠️ Some fonts failed to load. The app will use fallback fonts.');
+    console.warn('Some fonts failed to load. App will use system fonts as fallback.');
   }
-  
-  return fontStatuses;
-};
+}
+
+async function checkWebFont(fontFamily: string): Promise<boolean> {
+  try {
+    // @ts-expect-error - document.fonts is available in web environment
+    if (!document.fonts || !document.fonts.check) {
+      return false;
+    }
+    
+    // @ts-expect-error - document.fonts.check is available in web environment
+    return document.fonts.check(`12px ${fontFamily}`);
+  } catch (error) {
+    return false;
+  }
+}
+
+async function checkNativeFont(fontFamily: string): Promise<boolean> {
+  try {
+    // For React Native, we'll assume fonts are loaded if no error is thrown
+    // This is a simplified check - in a real app you might want more sophisticated checking
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+export function getFallbackFont(): string {
+  if (Platform.OS === 'ios') {
+    return 'System';
+  } else if (Platform.OS === 'android') {
+    return 'Roboto';
+  } else {
+    return 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  }
+}

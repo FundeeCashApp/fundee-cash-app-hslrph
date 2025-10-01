@@ -15,7 +15,7 @@ import {
   ThemeProvider,
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppProvider } from "@/contexts/AppContext";
 import { colors } from "@/styles/commonStyles";
 import { logFontStatus } from "@/utils/fontVerification";
@@ -24,7 +24,7 @@ import { logFontStatus } from "@/utils/fontVerification";
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(index)",
+  initialRouteName: "welcome",
 };
 
 // Font loading component with fallback
@@ -103,6 +103,69 @@ function FontLoader({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Navigation component that handles auth routing
+function AppNavigator() {
+  const { user, isLoading } = useAuth();
+
+  // Show loading screen while checking auth
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading Fundee Cash...</Text>
+        <Text style={styles.loadingSubtext}>Checking authentication</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      {user ? (
+        // Authenticated user screens
+        <>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="modals/winner-popup"
+            options={{
+              presentation: "transparentModal",
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="modals/ad-viewer"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="modals/withdrawal"
+            options={{
+              presentation: "formSheet",
+              sheetGrabberVisible: true,
+              sheetAllowedDetents: [0.7, 1.0],
+              sheetCornerRadius: 20,
+              headerShown: false,
+            }}
+          />
+        </>
+      ) : (
+        // Unauthenticated user screens
+        <>
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="auth/login" />
+          <Stack.Screen name="auth/signup" />
+          <Stack.Screen name="auth/forgot-password" />
+          <Stack.Screen name="email-confirmed" />
+        </>
+      )}
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -141,46 +204,7 @@ export default function RootLayout() {
               value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
             >
               <GestureHandlerRootView style={{ flex: 1 }}>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                  }}
-                >
-                  {/* Auth screens */}
-                  <Stack.Screen name="auth/login" />
-                  <Stack.Screen name="auth/signup" />
-                  <Stack.Screen name="auth/forgot-password" />
-                  
-                  {/* Main app group */}
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="(index)" />
-
-                  {/* Modal screens */}
-                  <Stack.Screen
-                    name="modals/winner-popup"
-                    options={{
-                      presentation: "transparentModal",
-                      headerShown: false,
-                    }}
-                  />
-                  <Stack.Screen
-                    name="modals/ad-viewer"
-                    options={{
-                      presentation: "modal",
-                      headerShown: false,
-                    }}
-                  />
-                  <Stack.Screen
-                    name="modals/withdrawal"
-                    options={{
-                      presentation: "formSheet",
-                      sheetGrabberVisible: true,
-                      sheetAllowedDetents: [0.7, 1.0],
-                      sheetCornerRadius: 20,
-                      headerShown: false,
-                    }}
-                  />
-                </Stack>
+                <AppNavigator />
                 <SystemBars style={"auto"} />
               </GestureHandlerRootView>
             </ThemeProvider>
